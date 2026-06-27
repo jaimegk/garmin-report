@@ -6,6 +6,25 @@ _Generado el 2026-06-23 · Garmin Forerunner 165_
 
 ---
 
+## Resumen
+
+| Métrica | Esta semana | Tu media (~4 sem) | Tendencia |
+|---------|------------:|------------------:|:---------:|
+| Sueño | 7h34 | 7h52 | ▼ 18 min |
+| Score sueño | 84 | 86 | ▼ 2 |
+| FC reposo | 49 bpm | 46 bpm | ▲ 3 bpm |
+| HRV nocturno | 56 ms | 63 ms | ▼ 7 ms |
+| Estrés medio | 38 | 30 | ▲ 8 |
+| Pasos/día | 9.840 | 9.200 | ▲ 640 |
+
+### Señales
+
+- ⚠️ FC reposo elevada 3 días seguidos respecto a tu media (46 bpm) — posible fatiga, estrés o estar incubando algo.
+- ⚠️ HRV nocturno un 11% por debajo de tu media — señal de carga/estrés; prioriza descanso.
+- ⚠️ Estrés medio elevado (38) frente a tu media (30).
+
+---
+
 ## Sueño
 
 | Día   | Horas | Deep | REM | Light | Score |

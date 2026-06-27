@@ -4,6 +4,11 @@ Extrae tus datos de [Garmin Connect](https://connect.garmin.com) a una base de d
 SQLite local y genera un informe semanal en Markdown con sueño, frecuencia cardíaca en
 reposo, HRV nocturno, estrés, Body Battery, actividades y pasos.
 
+Además compara cada semana con tu **media de las ~4 semanas previas** y resalta
+**señales** automáticas (FC reposo elevada varios días, HRV por debajo de lo habitual,
+noches cortas, estrés alto…), para que el informe no sea solo un registro sino que te
+diga qué merece atención.
+
 Todo corre en local: tus credenciales y tus datos de salud nunca salen de tu máquina.
 
 ```
@@ -17,15 +22,19 @@ garmin extract (incremental)  →  garmin_data.db (SQLite)  →  output/garmin_l
 
 _Generado el 2026-06-23 · Garmin Forerunner 165_
 
-## Sueño
+## Resumen
 
-| Día | Horas | Deep | REM | Light | Score |
-|-----|------:|-----:|----:|------:|------:|
-| Lun | 7h48 | 2h17 | 1h43 | 3h48 | 91 |
-| Mar | 9h06 | 1h23 | 1h29 | 6h14 | 87 |
-| ... |      |      |     |       |    |
+| Métrica | Esta semana | Tu media (~4 sem) | Tendencia |
+|---------|------------:|------------------:|:---------:|
+| Sueño | 7h34 | 7h52 | ▼ 18 min |
+| FC reposo | 49 bpm | 46 bpm | ▲ 3 bpm |
+| HRV nocturno | 56 ms | 63 ms | ▼ 7 ms |
+| ... |   |   |   |
 
-**Media:** 7h54 · Score medio: 83
+### Señales
+
+- ⚠️ FC reposo elevada 3 días seguidos respecto a tu media — posible fatiga.
+- ⚠️ HRV nocturno un 11% por debajo de tu media — prioriza descanso.
 ```
 
 Ver [`docs/ejemplo_garmin_log.md`](docs/ejemplo_garmin_log.md) para un informe completo de ejemplo.
@@ -96,6 +105,7 @@ El informe se escribe en `output/garmin_log.md`.
 
 | Sección | Métricas |
 |---------|----------|
+| **Resumen** | Comparación de cada métrica con tu media de ~4 semanas + señales automáticas |
 | **Sueño** | Horas totales, fases (deep / REM / light), score, medias |
 | **FC reposo + HRV** | Frecuencia cardíaca en reposo y HRV nocturno (RMSSD aprox.) |
 | **Estrés y Body Battery** | Estrés medio diario, máximo y mínimo de Body Battery |

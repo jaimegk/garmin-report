@@ -25,6 +25,9 @@ DB_PATH = PROJECT_DIR / "garmin_data.db"
 OUTPUT_PATH = PROJECT_DIR / "output" / "garmin_log.md"
 VENV_BIN = PROJECT_DIR / ".venv" / "bin" / "garmin"
 
+# Semanas previas usadas como media de referencia para las tendencias
+BASELINE_WEEKS = 4
+
 DAYS_ES = ["Lun", "Mar", "Mié", "Jue", "Vie", "Sáb", "Dom"]
 MONTHS_ES = ["", "ene", "feb", "mar", "abr", "may", "jun",
              "jul", "ago", "sep", "oct", "nov", "dic"]
@@ -210,6 +213,174 @@ def query_steps(conn: sqlite3.Connection, start: date, end: date) -> dict:
 
 
 # ---------------------------------------------------------------------------
+# Tendencias y señales
+# ---------------------------------------------------------------------------
+
+def metric_stats(conn: sqlite3.Connection, start: date, end: date) -> dict:
+    """Medias agregadas del periodo [start, end] para comparar tendencias.
+
+    Las métricas de sueño se indexan por la noche (calendar_date = día + 1),
+    igual que en el resto del informe. Cada métrica es None si no hay datos.
+    """
+    cur = conn.cursor()
+    s1 = (start + timedelta(days=1)).isoformat()
+    e1 = (end + timedelta(days=1)).isoformat()
+    cur.execute("""
+        SELECT
+            AVG(NULLIF(sleep_time_seconds, 0)),
+            AVG(score_overall_value),
+            AVG(resting_heart_rate),
+            AVG(avg_overnight_hrv),
+            COUNT(NULLIF(sleep_time_seconds, 0))
+        FROM sleep
+        WHERE calendar_date >= ? AND calendar_date <= ?
+    """, (s1, e1))
+    sleep_s, score, rhr, hrv, n_nights = cur.fetchone()
+
+    cur.execute("""
+        SELECT AVG(value) FROM stress
+        WHERE date(timestamp) >= ? AND date(timestamp) <= ? AND value >= 0
+    """, (start.isoformat(), end.isoformat()))
+    stress = cur.fetchone()[0]
+
+    cur.execute("""
+        SELECT SUM(value), COUNT(DISTINCT date(timestamp))
+        FROM steps
+        WHERE date(timestamp) >= ? AND date(timestamp) <= ? AND value > 0
+    """, (start.isoformat(), end.isoformat()))
+    steps_sum, steps_days = cur.fetchone()
+    steps = (steps_sum / steps_days) if steps_sum and steps_days else None
+
+    return {
+        "sleep_s": sleep_s, "score": score, "rhr": rhr, "hrv": hrv,
+        "stress": stress, "steps": steps, "n_nights": n_nights or 0,
+    }
+
+
+def baseline_range(start: date, weeks: int) -> tuple[date, date]:
+    """Ventana de comparación: las `weeks` semanas justo antes del informe."""
+    return start - timedelta(days=weeks * 7), start - timedelta(days=1)
+
+
+def compute_flags(sleep_rows: list, cur_stats: dict, base_stats: dict) -> list[str]:
+    """Reglas simples sobre los datos para resaltar lo que merece atención.
+
+    sleep_rows: filas del periodo (cols: calendar_date, sleep_s, deep, light,
+    rem, score, hrv, rhr), ordenadas por fecha.
+    """
+    flags: list[str] = []
+    have_base = base_stats["n_nights"] >= 5
+
+    # FC reposo elevada varios días seguidos respecto a la media (umbral +5 bpm)
+    if have_base and base_stats["rhr"]:
+        thr = base_stats["rhr"] + 5
+        run = best = 0
+        for row in sleep_rows:
+            rhr = row[7]
+            if rhr and rhr >= thr:
+                run += 1
+                best = max(best, run)
+            else:
+                run = 0
+        if best >= 3:
+            flags.append(
+                f"⚠️ FC reposo elevada {best} días seguidos respecto a tu media "
+                f"({round(base_stats['rhr'])} bpm) — posible fatiga, estrés o estar incubando algo."
+            )
+
+    # HRV nocturno desviado de la media (±10%)
+    if have_base and base_stats["hrv"] and cur_stats["hrv"]:
+        ratio = cur_stats["hrv"] / base_stats["hrv"]
+        if ratio <= 0.90:
+            flags.append(
+                f"⚠️ HRV nocturno un {round((1 - ratio) * 100)}% por debajo de tu media "
+                "— señal de carga/estrés; prioriza descanso."
+            )
+        elif ratio >= 1.10:
+            flags.append("✅ HRV nocturno por encima de tu media — buena recuperación.")
+
+    # Noches cortas
+    short = sum(1 for r in sleep_rows if r[1] and r[1] < 6 * 3600)
+    if short >= 2:
+        flags.append(f"⚠️ {short} noches por debajo de 6 h de sueño.")
+
+    # Estrés medio elevado respecto a la media (+8)
+    if have_base and base_stats["stress"] and cur_stats["stress"]:
+        if cur_stats["stress"] >= base_stats["stress"] + 8:
+            flags.append(
+                f"⚠️ Estrés medio elevado ({round(cur_stats['stress'])}) "
+                f"frente a tu media ({round(base_stats['stress'])})."
+            )
+
+    # Señal positiva global (solo si no hay avisos)
+    if (cur_stats["sleep_s"] and cur_stats["sleep_s"] >= 7.5 * 3600
+            and cur_stats["score"] and cur_stats["score"] >= 85
+            and not any(f.startswith("⚠️") for f in flags)):
+        flags.append("✅ Buena semana de sueño y recuperación.")
+
+    if not flags:
+        flags.append("ℹ️ Sin señales destacables: semana dentro de tus rangos habituales.")
+    return flags
+
+
+def fmt_trend(cur, base, unit: str = "", as_duration: bool = False) -> str:
+    """Flecha + magnitud del cambio respecto a la media (sin juzgar el signo)."""
+    if cur is None or base is None:
+        return "–"
+    d = cur - base
+    if as_duration:
+        mag = abs(round(d / 60))
+        if mag == 0:
+            return "■ ="
+        return f"{'▲' if d > 0 else '▼'} {mag} min"
+    arrow = "▲" if d > 0.5 else "▼" if d < -0.5 else "■"
+    if arrow == "■":
+        return "■ ="
+    return f"{arrow} {abs(round(d))}{unit}"
+
+
+def build_summary(cur_stats: dict, base_stats: dict, flags: list[str], weeks: int) -> list[str]:
+    def dur(v):
+        return fmt_duration(round(v)) if v else "–"
+
+    def num(v, unit=""):
+        return f"{round(v)}{unit}" if v is not None else "–"
+
+    def steps_fmt(v):
+        return f"{int(round(v)):,}".replace(",", ".") if v else "–"
+
+    lines = ["## Resumen\n\n"]
+    if base_stats["n_nights"] >= 5:
+        lines += [
+            f"| Métrica | Esta semana | Tu media (~{weeks} sem) | Tendencia |\n",
+            "|---------|------------:|------------------------:|:---------:|\n",
+            f"| Sueño | {dur(cur_stats['sleep_s'])} | {dur(base_stats['sleep_s'])} | {fmt_trend(cur_stats['sleep_s'], base_stats['sleep_s'], as_duration=True)} |\n",
+            f"| Score sueño | {num(cur_stats['score'])} | {num(base_stats['score'])} | {fmt_trend(cur_stats['score'], base_stats['score'])} |\n",
+            f"| FC reposo | {num(cur_stats['rhr'], ' bpm')} | {num(base_stats['rhr'], ' bpm')} | {fmt_trend(cur_stats['rhr'], base_stats['rhr'], ' bpm')} |\n",
+            f"| HRV nocturno | {num(cur_stats['hrv'], ' ms')} | {num(base_stats['hrv'], ' ms')} | {fmt_trend(cur_stats['hrv'], base_stats['hrv'], ' ms')} |\n",
+            f"| Estrés medio | {num(cur_stats['stress'])} | {num(base_stats['stress'])} | {fmt_trend(cur_stats['stress'], base_stats['stress'])} |\n",
+            f"| Pasos/día | {steps_fmt(cur_stats['steps'])} | {steps_fmt(base_stats['steps'])} | {fmt_trend(cur_stats['steps'], base_stats['steps'])} |\n",
+        ]
+    else:
+        lines += [
+            "| Métrica | Esta semana |\n",
+            "|---------|------------:|\n",
+            f"| Sueño | {dur(cur_stats['sleep_s'])} |\n",
+            f"| Score sueño | {num(cur_stats['score'])} |\n",
+            f"| FC reposo | {num(cur_stats['rhr'], ' bpm')} |\n",
+            f"| HRV nocturno | {num(cur_stats['hrv'], ' ms')} |\n",
+            f"| Estrés medio | {num(cur_stats['stress'])} |\n",
+            f"| Pasos/día | {steps_fmt(cur_stats['steps'])} |\n",
+            "\n_Histórico insuficiente para comparar tendencias (se necesitan ~2 semanas"
+            " previas). Aparecerá automáticamente cuando haya más datos._\n",
+        ]
+    lines.append("\n### Señales\n\n")
+    lines += [f"- {f}\n" for f in flags]
+    lines.append("\n---\n\n")
+    return lines
+
+
+# ---------------------------------------------------------------------------
 # Generación del markdown
 # ---------------------------------------------------------------------------
 
@@ -228,6 +399,10 @@ def generate_md(
     steps_map: dict,
     start: date,
     end: date,
+    cur_stats: dict,
+    base_stats: dict,
+    flags: list[str],
+    baseline_weeks: int,
 ) -> str:
     num_days = (end - start).days + 1
     multi_week = num_days > 7
@@ -249,6 +424,8 @@ def generate_md(
         f"_Generado el {date.today().isoformat()} · Garmin Forerunner 165_\n\n",
         "---\n\n",
     ]
+
+    lines += build_summary(cur_stats, base_stats, flags, baseline_weeks)
 
     day_col_width = "------------" if multi_week else "-----"
 
@@ -428,12 +605,21 @@ def main():
     bb_map = query_body_battery(conn, start, end)
     activity_map = query_activities(conn, start, end)
     steps_map = query_steps(conn, start, end)
+
+    cur_stats = metric_stats(conn, start, end)
+    b_start, b_end = baseline_range(start, BASELINE_WEEKS)
+    base_stats = metric_stats(conn, b_start, b_end)
     conn.close()
+
+    flags = compute_flags(sleep_rows, cur_stats, base_stats)
 
     if not sleep_rows and not stress_map and not bb_map:
         print("[AVISO] No hay datos para ese rango de fechas. ¿Se completó la sincronización?")
 
-    md = generate_md(sleep_rows, stress_map, bb_map, activity_map, steps_map, start, end)
+    md = generate_md(
+        sleep_rows, stress_map, bb_map, activity_map, steps_map, start, end,
+        cur_stats, base_stats, flags, BASELINE_WEEKS,
+    )
     OUTPUT_PATH.parent.mkdir(exist_ok=True)
     OUTPUT_PATH.write_text(md, encoding="utf-8")
     print(f"Informe guardado en: {OUTPUT_PATH}")
