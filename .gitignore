@@ -1,0 +1,13 @@
+# Secretos y credenciales
+.env
+
+# Datos personales de salud (NO subir nunca)
+garmin_data.db
+garmin_data/
+garmin_files/
+output/
+
+# Entorno y artefactos de Python
+.venv/
+__pycache__/
+*.pyc
