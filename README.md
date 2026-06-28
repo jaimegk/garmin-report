@@ -27,14 +27,18 @@ _Generado el 2026-06-23 · Garmin Forerunner 165_
 | Métrica | Esta semana | Tu media (~4 sem) | Tendencia |
 |---------|------------:|------------------:|:---------:|
 | Sueño | 7h34 | 7h52 | ▼ 18 min |
+| Regularidad (acostarse) | ±34 min | ±28 min | ▲ 6 min |
 | FC reposo | 49 bpm | 46 bpm | ▲ 3 bpm |
 | HRV nocturno | 56 ms | 63 ms | ▼ 7 ms |
+| VO2máx | 48 | 47 | ▲ 1 |
+| Min. intensidad/sem | 210 min | 240 min | ▼ 30 min |
 | ... |   |   |   |
 
 ### Señales
 
 - ⚠️ FC reposo elevada 3 días seguidos respecto a tu media — posible fatiga.
 - ⚠️ HRV nocturno un 11% por debajo de tu media — prioriza descanso.
+- ⚠️ Horario de sueño irregular: la hora de acostarte varía ±66 min esta semana.
 ```
 
 Ver [`docs/ejemplo_garmin_log.md`](docs/ejemplo_garmin_log.md) para un informe completo de ejemplo.
@@ -92,7 +96,8 @@ python generate_report.py --no-sync
 # Desde una fecha hasta hoy
 python generate_report.py --start-date 2026-05-28
 
-# Rango concreto (genera etiquetas de día con fecha en rangos largos)
+# Rango concreto: en periodos de más de una semana, el Resumen se trocea en
+# semanas ISO y muestra la evolución y la tendencia (última semana vs anteriores)
 python generate_report.py --start-date 2026-05-01 --end-date 2026-05-31
 
 # Inspeccionar el esquema de la BD (tablas y columnas)
@@ -105,14 +110,22 @@ El informe se escribe en `output/garmin_log.md`.
 
 | Sección | Métricas |
 |---------|----------|
-| **Resumen** | Comparación de cada métrica con tu media de ~4 semanas + señales automáticas |
-| **Sueño** | Horas totales, fases (deep / REM / light), score, medias |
-| **FC reposo + HRV** | Frecuencia cardíaca en reposo y HRV nocturno (RMSSD aprox.) |
+| **Resumen** | Cada métrica frente a tu media de ~4 semanas + señales automáticas (incluye VO2máx, regularidad del sueño y minutos de intensidad). En informes de **más de una semana** pasa a una **tabla de evolución semana a semana** con tendencia |
+| **Sueño** | Horas, fases (deep / REM / light), score, **hora de acostarse/despertar + regularidad** y desvelo medio |
+| **FC reposo + HRV** | Frecuencia cardíaca en reposo, HRV nocturno (RMSSD aprox.) y estado de HRV |
+| **Respiración y SpO2** | SpO2 nocturna (media / mínima) y frecuencia respiratoria — orientativo, cribado |
 | **Estrés y Body Battery** | Estrés medio diario, máximo y mínimo de Body Battery |
-| **Actividad** | Sesiones (tipo y duración), FC media, delta de Body Battery, pasos |
+| **Actividad** | Sesiones (tipo y duración), FC media, **minutos de intensidad**, delta de Body Battery, pasos |
+| **Forma física** | VO2máx (el predictor de longevidad más potente) y ritmos de carrera previstos |
 
 Las noches de sueño se etiquetan por el día en que te acostaste (no por el de
 despertar), y las lecturas inválidas de estrés/Body Battery (`value < 0`) se descartan.
+
+> **Nota sobre el VO2máx:** el Forerunner 165 solo lo estima a partir de **carreras o
+> caminatas al aire libre con GPS** (o ciclismo con potenciómetro). Las sesiones indoor,
+> en cinta o de natación no generan estimación; si no aparece, haz alguna salida al aire
+> libre. El análisis completo de qué métricas predicen mortalidad y cuáles mide el FR165
+> está en [`docs/mortalidad_prematura_y_forerunner165.md`](docs/mortalidad_prematura_y_forerunner165.md).
 
 ## Privacidad
 
