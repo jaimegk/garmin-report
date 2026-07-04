@@ -2,7 +2,7 @@
 """
 Genera un informe en markdown con datos de salud de Garmin Connect.
 
-Flujo: garmin extract (incremental) → SQLite local → output/garmin_log.md
+Flujo: garmin extract (incremental) → SQLite local → output/garmin_log_<inicio>_<fin>.md
 
 Uso:
   python generate_report.py                                    # última semana ISO + sync
@@ -13,7 +13,6 @@ Uso:
 """
 
 import argparse
-import os
 import sqlite3
 import statistics
 import subprocess
@@ -24,7 +23,7 @@ from pathlib import Path
 
 PROJECT_DIR = Path(__file__).parent
 DB_PATH = PROJECT_DIR / "garmin_data.db"
-OUTPUT_PATH = PROJECT_DIR / "output" / "garmin_log.md"
+OUTPUT_DIR = PROJECT_DIR / "output"
 VENV_BIN = PROJECT_DIR / ".venv" / "bin" / "garmin"
 
 # Semanas previas usadas como media de referencia para las tendencias
@@ -191,7 +190,6 @@ def sync():
 
     result = subprocess.run(
         [str(VENV_BIN), "extract"],
-        env={**os.environ},
         cwd=str(PROJECT_DIR),
     )
     if result.returncode != 0:
@@ -620,7 +618,38 @@ def fmt_trend(cur, base, unit: str = "", as_duration: bool = False) -> str:
     return f"{arrow} {abs(round(d))}{unit}"
 
 
-def weekly_breakdown(weekly: list, base: dict, dur, num, steps_fmt, reg) -> list[str]:
+def _sum_dur(v):
+    return fmt_duration(round(v)) if v else "–"
+
+
+def _sum_num(v, unit=""):
+    return f"{round(v)}{unit}" if v is not None else "–"
+
+
+def _sum_steps(v):
+    return f"{int(round(v)):,}".replace(",", ".") if v else "–"
+
+
+def _sum_reg(v):
+    return f"±{round(v)} min" if v is not None else "–"
+
+
+# Métricas del Resumen: (etiqueta, clave en metric_stats, formateador, unidad, es_duración).
+# Única fuente para las tres variantes de tabla (semanal, sin histórico, multi-semana).
+SUMMARY_SPECS = [
+    ("Sueño",                   "sleep_s",        _sum_dur,                       "",     True),
+    ("Regularidad (acostarse)", "bed_sd",         _sum_reg,                       " min", False),
+    ("Score sueño",             "score",          _sum_num,                       "",     False),
+    ("FC reposo",               "rhr",            lambda v: _sum_num(v, " bpm"),  " bpm", False),
+    ("HRV nocturno",            "hrv",            lambda v: _sum_num(v, " ms"),   " ms",  False),
+    ("VO2máx",                  "vo2max",         _sum_num,                       "",     False),
+    ("Estrés medio",            "stress",         _sum_num,                       "",     False),
+    ("Pasos/día",               "steps",          _sum_steps,                     "",     False),
+    ("Min. intensidad/sem",     "intensity_week", lambda v: _sum_num(v, " min"),  " min", False),
+]
+
+
+def weekly_breakdown(weekly: list, base: dict) -> list[str]:
     """Tabla de evolución semana a semana (informes multi-semana).
 
     Una columna por semana ISO del periodo + una columna Tendencia que compara
@@ -634,18 +663,7 @@ def weekly_breakdown(weekly: list, base: dict, dur, num, steps_fmt, reg) -> list
         f"| Métrica | {heads} | Tendencia |\n",
         f"|---------|{'------:|' * len(weekly)}:---------:|\n",
     ]
-    specs = [
-        ("Sueño",                   "sleep_s",        dur,                      "",     True),
-        ("Regularidad (acostarse)", "bed_sd",         reg,                      " min", False),
-        ("Score sueño",             "score",          lambda v: num(v),         "",     False),
-        ("FC reposo",               "rhr",            lambda v: num(v, " bpm"), " bpm", False),
-        ("HRV nocturno",            "hrv",            lambda v: num(v, " ms"),  " ms",  False),
-        ("VO2máx",                  "vo2max",         lambda v: num(v),         "",     False),
-        ("Estrés medio",            "stress",         lambda v: num(v),         "",     False),
-        ("Pasos/día",               "steps",          steps_fmt,                "",     False),
-        ("Min. intensidad/sem",     "intensity_week", lambda v: num(v, " min"), " min", False),
-    ]
-    for label, key, fmt, unit, as_dur in specs:
+    for label, key, fmt, unit, as_dur in SUMMARY_SPECS:
         cells = " | ".join(fmt(w["stats"][key]) for w in weekly)
         trend = fmt_trend(cur[key], base[key], unit, as_duration=as_dur)
         out.append(f"| {label} | {cells} | {trend} |\n")
@@ -656,51 +674,28 @@ def weekly_breakdown(weekly: list, base: dict, dur, num, steps_fmt, reg) -> list
 
 def build_summary(cur_stats: dict, base_stats: dict, flags: list[str], weeks: int,
                   multi_week: bool = False, weekly: list | None = None) -> list[str]:
-    def dur(v):
-        return fmt_duration(round(v)) if v else "–"
-
-    def num(v, unit=""):
-        return f"{round(v)}{unit}" if v is not None else "–"
-
-    def steps_fmt(v):
-        return f"{int(round(v)):,}".replace(",", ".") if v else "–"
-
-    def reg(v):
-        return f"±{round(v)} min" if v is not None else "–"
-
     lines = ["## Resumen\n\n"]
     if multi_week and weekly:
-        lines += weekly_breakdown(weekly, base_stats, dur, num, steps_fmt, reg)
+        lines += weekly_breakdown(weekly, base_stats)
     elif base_stats["n_nights"] >= 5:
         lines += [
             f"| Métrica | Esta semana | Tu media (~{weeks} sem) | Tendencia |\n",
             "|---------|------------:|------------------------:|:---------:|\n",
-            f"| Sueño | {dur(cur_stats['sleep_s'])} | {dur(base_stats['sleep_s'])} | {fmt_trend(cur_stats['sleep_s'], base_stats['sleep_s'], as_duration=True)} |\n",
-            f"| Regularidad (acostarse) | {reg(cur_stats['bed_sd'])} | {reg(base_stats['bed_sd'])} | {fmt_trend(cur_stats['bed_sd'], base_stats['bed_sd'], ' min')} |\n",
-            f"| Score sueño | {num(cur_stats['score'])} | {num(base_stats['score'])} | {fmt_trend(cur_stats['score'], base_stats['score'])} |\n",
-            f"| FC reposo | {num(cur_stats['rhr'], ' bpm')} | {num(base_stats['rhr'], ' bpm')} | {fmt_trend(cur_stats['rhr'], base_stats['rhr'], ' bpm')} |\n",
-            f"| HRV nocturno | {num(cur_stats['hrv'], ' ms')} | {num(base_stats['hrv'], ' ms')} | {fmt_trend(cur_stats['hrv'], base_stats['hrv'], ' ms')} |\n",
-            f"| VO2máx | {num(cur_stats['vo2max'])} | {num(base_stats['vo2max'])} | {fmt_trend(cur_stats['vo2max'], base_stats['vo2max'])} |\n",
-            f"| Estrés medio | {num(cur_stats['stress'])} | {num(base_stats['stress'])} | {fmt_trend(cur_stats['stress'], base_stats['stress'])} |\n",
-            f"| Pasos/día | {steps_fmt(cur_stats['steps'])} | {steps_fmt(base_stats['steps'])} | {fmt_trend(cur_stats['steps'], base_stats['steps'])} |\n",
-            f"| Min. intensidad/sem | {num(cur_stats['intensity_week'], ' min')} | {num(base_stats['intensity_week'], ' min')} | {fmt_trend(cur_stats['intensity_week'], base_stats['intensity_week'], ' min')} |\n",
         ]
+        for label, key, fmt, unit, as_dur in SUMMARY_SPECS:
+            trend = fmt_trend(cur_stats[key], base_stats[key], unit, as_duration=as_dur)
+            lines.append(f"| {label} | {fmt(cur_stats[key])} | {fmt(base_stats[key])} | {trend} |\n")
     else:
         lines += [
             "| Métrica | Esta semana |\n",
             "|---------|------------:|\n",
-            f"| Sueño | {dur(cur_stats['sleep_s'])} |\n",
-            f"| Regularidad (acostarse) | {reg(cur_stats['bed_sd'])} |\n",
-            f"| Score sueño | {num(cur_stats['score'])} |\n",
-            f"| FC reposo | {num(cur_stats['rhr'], ' bpm')} |\n",
-            f"| HRV nocturno | {num(cur_stats['hrv'], ' ms')} |\n",
-            f"| VO2máx | {num(cur_stats['vo2max'])} |\n",
-            f"| Estrés medio | {num(cur_stats['stress'])} |\n",
-            f"| Pasos/día | {steps_fmt(cur_stats['steps'])} |\n",
-            f"| Min. intensidad/sem | {num(cur_stats['intensity_week'], ' min')} |\n",
-            "\n_Histórico insuficiente para comparar tendencias (se necesitan ~2 semanas"
-            " previas). Aparecerá automáticamente cuando haya más datos._\n",
         ]
+        for label, key, fmt, _unit, _as_dur in SUMMARY_SPECS:
+            lines.append(f"| {label} | {fmt(cur_stats[key])} |\n")
+        lines.append(
+            "\n_Histórico insuficiente para comparar tendencias (se necesitan ~2 semanas"
+            " previas). Aparecerá automáticamente cuando haya más datos._\n"
+        )
     lines.append("\n### Señales\n\n")
     lines += [f"- {f}\n" for f in flags]
     lines.append("\n---\n\n")
@@ -769,6 +764,7 @@ def generate_md(
     total_sleep_s = 0
     total_score = 0
     sleep_count = 0
+    score_count = 0
     present = []
     for i in range(num_days):
         d = start + timedelta(days=i)
@@ -786,11 +782,12 @@ def generate_md(
                 sleep_count += 1
             if n.score:
                 total_score += n.score
+                score_count += 1
         else:
             lines.append(f"| {label} | – | – | – | – | – | – | – |\n")
 
     avg_sleep = fmt_duration(total_sleep_s // sleep_count) if sleep_count else "–"
-    avg_score = round(total_score / sleep_count) if sleep_count else "–"
+    avg_score = round(total_score / score_count) if score_count else "–"
 
     # Regularidad (dispersión de las horas de acostarse/despertar) y desvelo medio
     bed_sd = sd_minutes([bed_minutes(n.start_ts) for n in present])
@@ -929,18 +926,18 @@ def generate_md(
 
         if acts:
             parts = []
-            total_bb = 0
+            bbs = []
             hrs = []
             for atype, mins, hr, bb in acts:
                 name = ACTIVITY_LABELS.get(atype, atype.replace("_", " "))
                 parts.append(f"{name} {int(mins) if mins else '?'}min")
                 if bb is not None:
-                    total_bb += bb
+                    bbs.append(bb)
                 if hr:
                     hrs.append(hr)
             session_str = " · ".join(parts)
             hr_str = f"{round(sum(hrs)/len(hrs))} bpm" if hrs else "–"
-            bb_str = f"{total_bb:+d}" if total_bb else "–"
+            bb_str = f"{sum(bbs):+d}" if bbs else "–"
         else:
             session_str = "descanso"
             hr_str = "–"
@@ -1004,6 +1001,9 @@ def main():
     parser.add_argument("--start-date", metavar="YYYY-MM-DD", help="Fecha de inicio del informe (por defecto: lunes de la semana pasada)")
     parser.add_argument("--end-date", metavar="YYYY-MM-DD", help="Fecha de fin del informe (por defecto: domingo de la semana pasada, o hoy si se usa --start-date)")
     args = parser.parse_args()
+
+    if args.end_date and not args.start_date:
+        parser.error("--end-date requiere --start-date")
 
     if not args.no_sync:
         print("Sincronizando con Garmin Connect...")
@@ -1072,9 +1072,10 @@ def main():
         sleep_rows, stress_map, bb_map, activity_map, steps_map, intensity_map,
         vo2max, race_pred, start, end, cur_stats, base_stats, flags, BASELINE_WEEKS, weekly,
     )
-    OUTPUT_PATH.parent.mkdir(exist_ok=True)
-    OUTPUT_PATH.write_text(md, encoding="utf-8")
-    print(f"Informe guardado en: {OUTPUT_PATH}")
+    output_path = OUTPUT_DIR / f"garmin_log_{start.isoformat()}_{end.isoformat()}.md"
+    output_path.parent.mkdir(exist_ok=True)
+    output_path.write_text(md, encoding="utf-8")
+    print(f"Informe guardado en: {output_path}")
 
 
 if __name__ == "__main__":

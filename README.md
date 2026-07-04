@@ -12,7 +12,7 @@ diga qué merece atención.
 Todo corre en local: tus credenciales y tus datos de salud nunca salen de tu máquina.
 
 ```
-garmin extract (incremental)  →  garmin_data.db (SQLite)  →  output/garmin_log.md
+garmin extract (incremental)  →  garmin_data.db (SQLite)  →  output/garmin_log_<inicio>_<fin>.md
 ```
 
 ## Ejemplo de salida
@@ -104,7 +104,8 @@ python generate_report.py --start-date 2026-05-01 --end-date 2026-05-31
 python generate_report.py --inspect-schema
 ```
 
-El informe se escribe en `output/garmin_log.md`.
+El informe se escribe en `output/garmin_log_<inicio>_<fin>.md` (el nombre incluye
+siempre el rango de fechas evaluado, p. ej. `garmin_log_2026-06-22_2026-06-28.md`).
 
 ## Qué incluye el informe
 
