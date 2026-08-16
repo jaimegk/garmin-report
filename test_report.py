@@ -4,13 +4,17 @@
 Ejecutar: python test_report.py  (sin dependencias, solo asserts)
 """
 
+import re
+import types
 from datetime import date
 
+import generate_report
 from generate_report import (
     SleepNight, bed_minutes, wake_minutes, sd_minutes, fmt_duration,
     fmt_trend, fmt_hms, iso_weeks_in_range, compute_flags,
-    fmt_pace, fmt_zones,
+    fmt_pace, fmt_zones, sync,
 )
+from render_html import md_to_html, svg_bars
 
 
 def test_bed_minutes_wraps_after_midnight():
@@ -89,6 +93,59 @@ def test_fmt_pace_por_deporte():
 def test_fmt_zones():
     assert fmt_zones([0, 300, 600, 100, 0]) == "0/30/60/10/0"
     assert fmt_zones([None] * 5) == "–"
+
+
+def test_md_to_html():
+    md = (
+        "## Sueño\n\n"
+        "| Día | Horas |\n"
+        "|-----|------:|\n"
+        "| Lun | 7h30 |\n\n"
+        "**Media:** 7h30\n\n"
+        "- ⚠️ Una señal\n"
+    )
+    out = md_to_html(md, {"Sueño": "<svg id='grafica'></svg>"})
+
+    assert "<h2>Sueño</h2>" in out
+    # La gráfica se inyecta justo después de su encabezado, no al final
+    assert out.index("<svg id='grafica'>") == out.index("</h2>") + len("</h2>") + 1
+    # La fila separadora no se convierte en datos y la alineación se traslada
+    assert out.count("<tr>") == 2 and "<th>Día</th>" in out
+    assert '<td style="text-align:right">7h30</td>' in out
+    assert "<strong>Media:</strong>" in out
+    assert "<ul><li>⚠️ Una señal</li></ul>" in out
+
+
+def test_svg_bars_escala_y_huecos():
+    svg = svg_bars("t", ["a", "b", "c"], [[10, None, 20]], ("Pasos",))
+    heights = [float(h) for h in re.findall(r'height="([\d.]+)"', svg)]
+
+    # Dos barras, no tres: el None no dibuja nada
+    assert len(heights) == 2
+    # ...y no desplaza la escala: 10 es la mitad de 20
+    assert abs(heights[0] * 2 - heights[1]) < 0.5
+    # Un rango entero sin datos no revienta
+    assert '<rect' not in svg_bars("t", ["a", "b"], [[None, None]], ("Pasos",))
+
+
+def test_sync_pasa_el_rango_a_extract():
+    calls = []
+    orig_run, orig_bin = generate_report.subprocess.run, generate_report.VENV_BIN
+    generate_report.subprocess.run = lambda cmd, **kw: (calls.append(cmd), types.SimpleNamespace(returncode=0))[1]
+    generate_report.VENV_BIN = type("P", (), {"exists": lambda self: True, "__str__": lambda self: "garmin"})()
+    try:
+        sync(date(2026, 4, 11), date(2026, 5, 5))
+        sync(date(2026, 4, 11), date(2026, 4, 11))
+        sync()
+    finally:
+        generate_report.subprocess.run, generate_report.VENV_BIN = orig_run, orig_bin
+
+    # --end-date de garmin extract es exclusivo → +1 día para incluir el 05-05
+    assert calls[0][1:] == ["extract", "--start-date", "2026-04-11", "--end-date", "2026-05-06"]
+    # Un solo día es el caso especial: extract lo incluye sin --end-date
+    assert calls[1][1:] == ["extract", "--start-date", "2026-04-11"]
+    # Sin rango, sincronización incremental de siempre
+    assert calls[2][1:] == ["extract"]
 
 
 if __name__ == "__main__":

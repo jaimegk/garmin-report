@@ -21,6 +21,8 @@ from collections import namedtuple
 from datetime import date, datetime, timedelta
 from pathlib import Path
 
+import render_html
+
 PROJECT_DIR = Path(__file__).parent
 DB_PATH = PROJECT_DIR / "garmin_data.db"
 OUTPUT_DIR = PROJECT_DIR / "output"
@@ -247,14 +249,23 @@ def parse_date(s: str) -> date:
 # Sincronización
 # ---------------------------------------------------------------------------
 
-def sync():
+def sync(start: date | None = None, end: date | None = None):
     if not VENV_BIN.exists():
         print(f"[ERROR] No se encuentra el ejecutable: {VENV_BIN}", file=sys.stderr)
         print("Ejecuta: python3 -m venv .venv && .venv/bin/pip install -r requirements.txt", file=sys.stderr)
         sys.exit(1)
 
+    cmd = [str(VENV_BIN), "extract"]
+    if start:
+        # Sin rango, `garmin extract` solo trae lo nuevo desde el último dato de la
+        # BD: pedir un informe antiguo daría un informe vacío. Su --end-date es
+        # exclusivo (salvo si coincide con --start-date), de ahí el +1 día.
+        cmd += ["--start-date", start.isoformat()]
+        if end and end > start:
+            cmd += ["--end-date", (end + timedelta(days=1)).isoformat()]
+
     result = subprocess.run(
-        [str(VENV_BIN), "extract"],
+        cmd,
         cwd=str(PROJECT_DIR),
     )
     if result.returncode != 0:
@@ -1312,9 +1323,18 @@ def main():
     if args.end_date and not args.start_date:
         parser.error("--end-date requiere --start-date")
 
+    if args.start_date:
+        start = parse_date(args.start_date)
+        end = parse_date(args.end_date) if args.end_date else date.today() - timedelta(days=1)
+    else:
+        start, end = last_week_range()
+
+    if end < start:
+        parser.error(f"--end-date ({end}) es anterior a --start-date ({start})")
+
     if not args.no_sync:
-        print("Sincronizando con Garmin Connect...")
-        sync()
+        print(f"Sincronizando con Garmin Connect ({start} – {end})...")
+        sync(start, end)
 
     if not DB_PATH.exists():
         print(f"[ERROR] BD no encontrada: {DB_PATH}", file=sys.stderr)
@@ -1327,12 +1347,6 @@ def main():
         inspect_schema(conn)
         conn.close()
         return
-
-    if args.start_date:
-        start = parse_date(args.start_date)
-        end = parse_date(args.end_date) if args.end_date else date.today() - timedelta(days=1)
-    else:
-        start, end = last_week_range()
 
     print(f"Generando informe: {start} – {end} ({(end - start).days + 1} días)")
 
@@ -1388,6 +1402,14 @@ def main():
     output_path.parent.mkdir(exist_ok=True)
     output_path.write_text(md, encoding="utf-8")
     print(f"Informe guardado en: {output_path}")
+
+    # Misma información, formato legible por un humano: tablas + gráficas SVG.
+    html_path = output_path.with_suffix(".html")
+    html_path.write_text(
+        render_html.render(md, sleep_rows, stress_map, bb_map, steps_map, start, end),
+        encoding="utf-8",
+    )
+    print(f"Versión HTML en: {html_path}")
 
 
 if __name__ == "__main__":

@@ -13,6 +13,7 @@ Todo corre en local: tus credenciales y tus datos de salud nunca salen de tu má
 
 ```
 garmin extract (incremental)  →  garmin_data.db (SQLite)  →  output/garmin_log_<inicio>_<fin>.md
+                                                          └→  output/garmin_log_<inicio>_<fin>.html
 ```
 
 ## Ejemplo de salida
@@ -107,6 +108,18 @@ python generate_report.py --inspect-schema
 El informe se escribe en `output/garmin_log_<inicio>_<fin>.md` (el nombre incluye
 siempre el rango de fechas evaluado, p. ej. `garmin_log_2026-06-22_2026-06-28.md`).
 
+### Versión HTML
+
+Cada ejecución escribe además un `.html` con el mismo nombre. Es el mismo informe con
+las tablas ya formateadas y **gráficas de fases del sueño, FC en reposo, HRV, estrés
+sobre Body Battery y pasos diarios**; el markdown está pensado para pasárselo a una IA
+y el HTML para leerlo tú.
+
+Se abre con doble clic: es un fichero autocontenido, sin JavaScript ni recursos
+externos, así que funciona offline y también sirve para mandártelo al móvil. Se adapta
+al tema claro/oscuro del sistema, y al pasar el ratón sobre una barra o un punto se ve
+su valor exacto.
+
 ## Qué incluye el informe
 
 | Sección | Métricas |
@@ -138,7 +151,7 @@ local y están excluidos por `.gitignore`:
 - `.env` — tus credenciales
 - `garmin_data.db` — base de datos SQLite con tu historial
 - `garmin_files/` — ficheros `.fit` y JSON descargados de Garmin
-- `output/` — informes generados
+- `output/` — informes generados (`.md` y `.html`)
 
 ## Licencia
 
