@@ -9,6 +9,7 @@ from datetime import date
 from generate_report import (
     SleepNight, bed_minutes, wake_minutes, sd_minutes, fmt_duration,
     fmt_trend, fmt_hms, iso_weeks_in_range, compute_flags,
+    fmt_pace, fmt_zones,
 )
 
 
@@ -74,6 +75,20 @@ def test_compute_flags():
     low = dict(cur, hrv=51)
     flags = compute_flags([_night()] * 7, low, base)
     assert any("HRV nocturno" in f and f.startswith("⚠️") for f in flags), flags
+
+
+def test_fmt_pace_por_deporte():
+    # 3.33 m/s ≈ 5:00/km corriendo; en bici se muestra km/h; en pádel, nada
+    assert fmt_pace(1000 / 300, "running") == "5:00/km"
+    assert fmt_pace(1000 / 300, "indoor_cycling") == "12.0 km/h"
+    assert fmt_pace(100 / 130, "lap_swimming") == "2:10/100m"
+    assert fmt_pace(1000 / 300, "paddelball") == "–"
+    assert fmt_pace(None, "running") == "–"
+
+
+def test_fmt_zones():
+    assert fmt_zones([0, 300, 600, 100, 0]) == "0/30/60/10/0"
+    assert fmt_zones([None] * 5) == "–"
 
 
 if __name__ == "__main__":

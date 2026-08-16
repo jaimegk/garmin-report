@@ -71,7 +71,19 @@ SleepNight = namedtuple("SleepNight", [
     "sleep_s", "deep_s", "light_s", "rem_s", "awake_s",
     "score", "hrv", "hrv_status", "rhr",
     "spo2_avg", "spo2_min", "resp_avg",
+    "nap_s", "awake_count", "restless", "sleep_stress", "bb_change",
+    "need_actual", "need_baseline", "breathing_severity",
 ])
+# Los campos de contexto son opcionales: no todos los relojes los rellenan.
+SleepNight.__new__.__defaults__ = (None,) * 8
+
+# Etiqueta de esfuerzo de la sesión (training_effect_label de Garmin) → español
+TE_LABELS_ES = {
+    "RECOVERY": "recuperación", "BASE": "base", "AEROBIC_BASE": "base aeróbica",
+    "TEMPO": "tempo", "THRESHOLD": "umbral", "VO2MAX": "VO2máx",
+    "SPEED": "velocidad", "ANAEROBIC_CAPACITY": "cap. anaeróbica",
+    "SPRINT": "sprint", "UNKNOWN": "–",
+}
 
 
 # ---------------------------------------------------------------------------
@@ -125,6 +137,59 @@ def fmt_hms(seconds) -> str:
     h, rem = divmod(seconds, 3600)
     m, s = divmod(rem, 60)
     return f"{h}:{m:02d}:{s:02d}" if h else f"{m}:{s:02d}"
+
+
+# Deportes en los que el ritmo/velocidad significa algo. En pádel o gym la
+# distancia es deambular por la pista: mostrar min/km ahí es ruido.
+PACE_SPORTS = ("running", "walking", "hiking", "cycling", "biking", "swim")
+
+
+def fmt_pace(speed_ms, atype: str) -> str:
+    """Ritmo/velocidad según deporte: min/km corriendo, min/100m nadando, km/h en bici."""
+    if not speed_ms or not any(s in atype for s in PACE_SPORTS):
+        return "–"
+    if "swim" in atype:
+        sec = 100 / speed_ms
+        return f"{int(sec // 60)}:{int(sec % 60):02d}/100m"
+    if "cycling" in atype or "biking" in atype:
+        return f"{speed_ms * 3.6:.1f} km/h"
+    sec = 1000 / speed_ms
+    return f"{int(sec // 60)}:{int(sec % 60):02d}/km"
+
+
+def fmt_zones(z) -> str:
+    """Reparto de tiempo en zonas de FC como porcentajes Z1/Z2/Z3/Z4/Z5."""
+    vals = [v or 0 for v in z]
+    total = sum(vals)
+    if not total:
+        return "–"
+    return "/".join(str(round(v / total * 100)) for v in vals)
+
+
+def sport_extras(a: dict) -> str:
+    """Métricas propias del deporte, compactadas en una celda."""
+    p = []
+    if a["avg_running_cadence"]:
+        p.append(f"cad {round(a['avg_running_cadence'])} ppm")
+    if a["avg_stride_length"]:
+        p.append(f"zancada {a['avg_stride_length'] / 100:.2f} m")
+    if a["avg_ground_contact_time"]:
+        p.append(f"GCT {round(a['avg_ground_contact_time'])} ms")
+    if a["avg_vertical_oscillation"]:
+        p.append(f"osc. vert. {a['avg_vertical_oscillation']:.1f} cm")
+    if a["avg_power"] or a["cycling_power"]:
+        p.append(f"pot. {round(a['avg_power'] or a['cycling_power'])} W")
+    if a["elevation_gain"]:
+        p.append(f"D+ {round(a['elevation_gain'])} m")
+    if a["avg_swolf"]:
+        p.append(f"SWOLF {round(a['avg_swolf'])}")
+    if a["active_lengths"]:
+        p.append(f"{a['active_lengths']} largos de {round(a['pool_length'] / 100)} m")
+    if a["strokes"]:
+        p.append(f"{round(a['strokes'])} brazadas")
+    if a["avg_biking_cadence"]:
+        p.append(f"cad {round(a['avg_biking_cadence'])} rpm")
+    return " · ".join(p) if p else "–"
 
 
 def _clock_minutes(ts, *, wrap_after_midnight: bool):
@@ -262,7 +327,15 @@ def query_sleep(conn: sqlite3.Connection, start: date, end: date) -> list:
             average_spo2,
             lowest_spo2,
             average_respiration,
-            timezone_offset_hours
+            timezone_offset_hours,
+            nap_time_seconds,
+            awake_count,
+            restless_moments_count,
+            avg_sleep_stress,
+            body_battery_change,
+            sleep_need_actual,
+            sleep_need_baseline,
+            breathing_disruption_severity
         FROM sleep
         WHERE calendar_date >= ? AND calendar_date <= ?
         ORDER BY calendar_date
@@ -270,7 +343,7 @@ def query_sleep(conn: sqlite3.Connection, start: date, end: date) -> list:
     nights = []
     for r in cur.fetchall():
         tz = r[15]  # timezone_offset_hours: start_ts/end_ts → hora local
-        nights.append(SleepNight(r[0], to_local(r[1], tz), to_local(r[2], tz), *r[3:15]))
+        nights.append(SleepNight(r[0], to_local(r[1], tz), to_local(r[2], tz), *r[3:15], *r[16:]))
     return nights
 
 
@@ -394,6 +467,120 @@ def query_activities(conn: sqlite3.Connection, start: date, end: date, tz_min: i
     for day, atype, mins, hr, bb in cur.fetchall():
         result.setdefault(day, []).append((atype, mins, hr, bb))
     return result
+
+
+def query_activity_detail(conn: sqlite3.Connection, start: date, end: date, tz_min: int) -> list:
+    """Una fila por sesión con todo lo que Garmin guarda de ella.
+
+    Las métricas específicas de deporte viven en tablas aparte (*_agg_metrics);
+    se unen con LEFT JOIN porque cada actividad solo puebla la suya.
+    """
+    day = local_day("start_ts", tz_min)
+    cur = conn.cursor()
+    cur.execute(f"""
+        SELECT
+            {day} AS day, a.activity_id, a.activity_type_key, a.duration, a.distance,
+            a.average_hr, a.max_hr, a.calories,
+            a.aerobic_training_effect, a.anaerobic_training_effect, a.training_effect_label,
+            a.hr_time_in_zone_1, a.hr_time_in_zone_2, a.hr_time_in_zone_3,
+            a.hr_time_in_zone_4, a.hr_time_in_zone_5,
+            a.average_speed, a.max_speed, a.difference_body_battery, a.lap_count,
+            r.avg_running_cadence, r.avg_stride_length, r.avg_ground_contact_time,
+            r.avg_vertical_oscillation, r.avg_power, r.elevation_gain, r.vo2_max_value,
+            s.avg_swolf, s.strokes, s.active_lengths, s.pool_length,
+            c.avg_biking_cadence, c.avg_power AS cycling_power
+        FROM activity a
+        LEFT JOIN running_agg_metrics  r ON r.activity_id = a.activity_id
+        LEFT JOIN swimming_agg_metrics s ON s.activity_id = a.activity_id
+        LEFT JOIN cycling_agg_metrics  c ON c.activity_id = a.activity_id
+        WHERE {day} >= ? AND {day} <= ?
+          AND a.parent = 0
+          AND a.activity_type_key != 'breathwork'
+        ORDER BY a.start_ts
+    """, (start.isoformat(), end.isoformat()))
+    cols = [c[0] for c in cur.description]
+    return [dict(zip(cols, row)) for row in cur.fetchall()]
+
+
+def add_min_hr(conn: sqlite3.Connection, act_id: int, start_ts: str, laps: list):
+    """Añade min_heart_rate a cada vuelta.
+
+    Garmin no guarda la FC mínima por vuelta (solo media y máxima), así que se
+    saca de la serie a 1 Hz. Los límites de cada vuelta salen de acumular
+    total_elapsed_time desde el inicio: es tiempo de pared e incluye las pausas,
+    a diferencia de total_timer_time.
+    """
+    rows = conn.execute("""
+        SELECT timestamp, value FROM activity_ts_metric
+        WHERE activity_id = ? AND name = 'heart_rate' ORDER BY timestamp
+    """, (act_id,)).fetchall()
+    if not rows:
+        return
+    t0 = datetime.fromisoformat(start_ts)
+    series = [((datetime.fromisoformat(ts) - t0).total_seconds(), v)
+              for ts, v in rows if v]
+    offset = 0.0
+    for lap in laps:
+        lap_end = offset + (lap.get("total_elapsed_time") or 0)
+        vals = [v for t, v in series if offset <= t < lap_end]
+        lap["min_heart_rate"] = min(vals) if vals else None
+        offset = lap_end
+
+
+def query_laps(conn: sqlite3.Connection, start: date, end: date, tz_min: int) -> dict:
+    """Devuelve {activity_id: [{métrica: valor}, ...]} para sesiones con ≥2 vueltas.
+
+    activity_lap_metric guarda una fila por (vuelta, métrica); aquí se pivota a
+    un dict por vuelta y se filtran las métricas que caben en la tabla.
+    """
+    day = local_day("a.start_ts", tz_min)
+    cur = conn.cursor()
+    cur.execute(f"""
+        SELECT l.activity_id, a.start_ts, l.lap_idx, l.name, l.value
+        FROM activity_lap_metric l
+        JOIN activity a ON a.activity_id = l.activity_id
+        WHERE {day} >= ? AND {day} <= ?
+          AND l.name IN ('total_timer_time', 'total_elapsed_time', 'total_distance',
+                         'enhanced_avg_speed', 'avg_heart_rate', 'max_heart_rate',
+                         'avg_running_cadence', 'total_ascent', 'total_descent')
+        ORDER BY l.activity_id, l.lap_idx
+    """, (start.isoformat(), end.isoformat()))
+    by_activity: dict = {}
+    starts: dict = {}
+    for act_id, start_ts, lap_idx, name, value in cur.fetchall():
+        by_activity.setdefault(act_id, {}).setdefault(lap_idx, {})[name] = value
+        starts[act_id] = start_ts
+    # Una sola vuelta = la sesión entera; ya está en la tabla de detalle.
+    result = {aid: [laps[i] for i in sorted(laps)]
+              for aid, laps in by_activity.items() if len(laps) > 1}
+    for aid, laps in result.items():
+        add_min_hr(conn, aid, starts[aid], laps)
+    return result
+
+
+def query_floors(conn: sqlite3.Connection, start: date, end: date, tz_min: int) -> dict:
+    """Devuelve {fecha_str: pisos_subidos} por día."""
+    day = local_day("timestamp", tz_min)
+    cur = conn.cursor()
+    cur.execute(f"""
+        SELECT {day} AS day, SUM(ascended) AS up
+        FROM floors
+        WHERE {day} >= ? AND {day} <= ? AND ascended > 0
+        GROUP BY day
+    """, (start.isoformat(), end.isoformat()))
+    return {row[0]: row[1] for row in cur.fetchall()}
+
+
+def query_records(conn: sqlite3.Connection, start: date, end: date) -> list:
+    """Récords personales conseguidos dentro del periodo."""
+    cur = conn.cursor()
+    cur.execute("""
+        SELECT label, value, date(timestamp) FROM personal_record
+        WHERE date(timestamp) >= ? AND date(timestamp) <= ?
+          AND label NOT LIKE '%Unknown%'
+        ORDER BY timestamp
+    """, (start.isoformat(), end.isoformat()))
+    return cur.fetchall()
 
 
 def query_steps(conn: sqlite3.Connection, start: date, end: date, tz_min: int) -> dict:
@@ -720,6 +907,10 @@ def generate_md(
     activity_map: dict,
     steps_map: dict,
     intensity_map: dict,
+    floors_map: dict,
+    act_detail: list,
+    laps_map: dict,
+    records: list,
     vo2max,
     race_pred,
     start: date,
@@ -756,10 +947,15 @@ def generate_md(
     day_col_width = "------------" if multi_week else "-----"
 
     # --- Sueño ---
+    # La columna de siesta solo aparece si hubo alguna: en semanas sin siestas
+    # sería una columna de guiones.
+    has_naps = any(n.nap_s for n in sleep_rows)
+    nap_head = " Siesta |" if has_naps else ""
+    nap_sep = "------:|" if has_naps else ""
     lines += [
         "## Sueño\n\n",
-        f"| {'Día':<{len(day_col_width)}} | Acostarse | Despertar | Horas | Deep | REM | Light | Score |\n",
-        f"|{day_col_width}|:--------:|:--------:|------:|-----:|----:|------:|------:|\n",
+        f"| {'Día':<{len(day_col_width)}} | Acostarse | Despertar | Horas |{nap_head} Deep | REM | Light | Score |\n",
+        f"|{day_col_width}|:--------:|:--------:|------:|{nap_sep}-----:|----:|------:|------:|\n",
     ]
     total_sleep_s = 0
     total_score = 0
@@ -772,9 +968,10 @@ def generate_md(
         n = sleep_by_date.get(d.isoformat())
         if n:
             present.append(n)
+            nap_cell = f" {fmt_duration(n.nap_s) if n.nap_s else '–'} |" if has_naps else ""
             lines.append(
                 f"| {label} | {fmt_clock(n.start_ts)} | {fmt_clock(n.end_ts)}"
-                f" | {fmt_duration(n.sleep_s)} | {fmt_duration(n.deep_s)}"
+                f" | {fmt_duration(n.sleep_s)} |{nap_cell} {fmt_duration(n.deep_s)}"
                 f" | {fmt_duration(n.rem_s)} | {fmt_duration(n.light_s)} | {fmt_val(n.score)} |\n"
             )
             if n.sleep_s:
@@ -784,7 +981,8 @@ def generate_md(
                 total_score += n.score
                 score_count += 1
         else:
-            lines.append(f"| {label} | – | – | – | – | – | – | – |\n")
+            empty_nap = " – |" if has_naps else ""
+            lines.append(f"| {label} | – | – | – |{empty_nap} – | – | – | – |\n")
 
     avg_sleep = fmt_duration(total_sleep_s // sleep_count) if sleep_count else "–"
     avg_score = round(total_score / score_count) if score_count else "–"
@@ -804,6 +1002,36 @@ def generate_md(
     awake_str = f" · Desvelo medio: {avg_awake} min" if avg_awake is not None else ""
     lines.append(
         f"\n**Media:** {avg_sleep} · Score medio: {avg_score}{reg_str}{awake_str}\n\n"
+    )
+
+    # Contexto de la noche: lo que Garmin mide pero no cabe en la tabla.
+    def avg_of(field, scale=1):
+        vals = [getattr(n, field) for n in present if getattr(n, field) is not None]
+        return statistics.mean(vals) * scale if vals else None
+
+    ctx = []
+    naps = [n.nap_s for n in present if n.nap_s]
+    if naps:
+        ctx.append(f"**Siestas:** {len(naps)} de {len(present)} días, "
+                   f"{fmt_duration(round(statistics.mean(naps)))} de media "
+                   f"({fmt_duration(sum(naps))} en total)")
+    for field, label, unit in [
+        ("awake_count", "Despertares", "/noche"),
+        ("sleep_stress", "Estrés durante el sueño", ""),
+        ("bb_change", "Body Battery recuperada", ""),
+    ]:
+        v = avg_of(field)
+        if v is not None:
+            sign = "+" if field == "bb_change" else ""
+            ctx.append(f"{label}: {sign}{round(v)}{unit}")
+    sev = [n.breathing_severity for n in present
+           if n.breathing_severity and n.breathing_severity != "NONE"]
+    if sev:
+        ctx.append(f"Alteraciones respiratorias: {len(sev)} noches")
+    if ctx:
+        lines.append(" · ".join(ctx) + "\n\n")
+
+    lines.append(
         "_La regularidad (cuánto varían tus horarios) influye en la salud tanto como las "
         "horas dormidas: cuanto menor la dispersión, mejor._\n\n"
     )
@@ -913,8 +1141,8 @@ def generate_md(
     # --- Actividad ---
     lines += [
         "## Actividad\n\n",
-        f"| {'Día':<{len(day_col_width)}} | Sesiones | FC media | Intens. | BB Δ | Pasos |\n",
-        f"|{day_col_width}|----------|--------:|-------:|-----:|------:|\n",
+        f"| {'Día':<{len(day_col_width)}} | Sesiones | FC media | Intens. | BB Δ | Pasos | Pisos |\n",
+        f"|{day_col_width}|----------|--------:|-------:|-----:|------:|------:|\n",
     ]
     for i in range(num_days):
         d = start + timedelta(days=i)
@@ -945,7 +1173,11 @@ def generate_md(
 
         im_str = f"{im[0]} min" if im and im[0] else "–"
         steps_str = f"{int(steps):,}".replace(",", ".") if steps else "–"
-        lines.append(f"| {label} | {session_str} | {hr_str} | {im_str} | {bb_str} | {steps_str} |\n")
+        floors = floors_map.get(d_str)
+        floors_str = f"{round(floors)}" if floors else "–"
+        lines.append(
+            f"| {label} | {session_str} | {hr_str} | {im_str} | {bb_str} | {steps_str} | {floors_str} |\n"
+        )
 
     # Total de intensidad del periodo frente a la guía OMS
     if intensity_map:
@@ -957,6 +1189,81 @@ def generate_md(
             f"\n**Intensidad:** {tot} min equivalentes (moderada {modt} + vigorosa {vigt}×2)"
             f"{extra} · objetivo OMS {INTENSITY_TARGET_MIN}–{INTENSITY_TARGET_MAX} min/sem.\n"
         )
+
+    # --- Detalle por sesión ---
+    if act_detail:
+        lines += [
+            "\n### Detalle de sesiones\n\n",
+            "| Día | Sesión | Dur | Distancia | Ritmo | FC med/máx | Zonas 1-5 | Efecto aer/ana | kcal | BB Δ | Específicas |\n",
+            "|-----|--------|----:|----------:|------:|-----------:|:---------:|:--------------:|-----:|-----:|-------------|\n",
+        ]
+        for a in act_detail:
+            d = date.fromisoformat(a["day"])
+            name = ACTIVITY_LABELS.get(a["activity_type_key"],
+                                       a["activity_type_key"].replace("_", " "))
+            dist = f"{a['distance'] / 1000:.2f} km" if a["distance"] else "–"
+            hr = (f"{round(a['average_hr'])}/{round(a['max_hr'])}"
+                  if a["average_hr"] and a["max_hr"] else "–")
+            zones = fmt_zones([a[f"hr_time_in_zone_{i}"] for i in range(1, 6)])
+            te_lbl = TE_LABELS_ES.get(a["training_effect_label"], "")
+            te = (f"{a['aerobic_training_effect']:.1f}/{a['anaerobic_training_effect']:.1f}"
+                  f"{f' · {te_lbl}' if te_lbl and te_lbl != '–' else ''}"
+                  if a["aerobic_training_effect"] is not None else "–")
+            lines.append(
+                f"| {day_label(d, multi_week)} | {name} | {fmt_duration(round(a['duration'] or 0))}"
+                f" | {dist} | {fmt_pace(a['average_speed'], a['activity_type_key'])}"
+                f" | {hr} | {zones} | {te} | {fmt_val(a['calories'], fallback='–')}"
+                f" | {a['difference_body_battery'] if a['difference_body_battery'] is not None else '–'}"
+                f" | {sport_extras(a)} |\n"
+            )
+        lines.append(
+            "\n_Zonas 1-5: reparto porcentual del tiempo en cada zona de FC. "
+            "Efecto aer/ana: escala 0–5 de Garmin (aeróbico / anaeróbico) — por encima "
+            "de 3 la sesión mejora la forma, por debajo de 2 la mantiene._\n"
+        )
+
+    # --- Vueltas ---
+    if laps_map:
+        lines.append("\n### Vueltas\n")
+        for a in act_detail:
+            laps = laps_map.get(a["activity_id"])
+            if not laps:
+                continue
+            d = date.fromisoformat(a["day"])
+            name = ACTIVITY_LABELS.get(a["activity_type_key"],
+                                       a["activity_type_key"].replace("_", " "))
+            lines += [
+                f"\n**{day_label(d, multi_week)} · {name}** — {len(laps)} vueltas\n\n",
+                "| # | Tiempo | Distancia | Ritmo | FC mín/med/máx | Cadencia | Vertical |\n",
+                "|--:|-------:|----------:|------:|---------------:|---------:|---------:|\n",
+            ]
+            for i, lap in enumerate(laps, 1):
+                dist = lap.get("total_distance")
+                hr = [lap.get(k) for k in
+                      ("min_heart_rate", "avg_heart_rate", "max_heart_rate")]
+                hr_str = "/".join(str(round(v)) if v else "–" for v in hr) \
+                    if any(hr) else "–"
+                # En las vueltas la cadencia viene en zancadas/min (una pierna).
+                cad = lap.get("avg_running_cadence")
+                # Garmin da subida y bajada como dos magnitudes positivas. Se
+                # muestran ambas: el neto escondería el desnivel de las vueltas
+                # onduladas (subir 7 y bajar 10 no es "bajar 3").
+                asc, desc = lap.get("total_ascent"), lap.get("total_descent")
+                vert = " / ".join(p for p in (f"+{round(asc)}" if asc else "",
+                                              f"-{round(desc)}" if desc else "") if p)
+                lines.append(
+                    f"| {i} | {fmt_hms(lap.get('total_timer_time'))}"
+                    f" | {f'{dist / 1000:.2f} km' if dist else '–'}"
+                    f" | {fmt_pace(lap.get('enhanced_avg_speed'), a['activity_type_key'])}"
+                    f" | {hr_str}"
+                    f" | {f'{round(cad * 2)} ppm' if cad else '–'}"
+                    f" | {f'{vert} m' if vert else '–'} |\n"
+                )
+
+    if records:
+        lines.append("\n**Récords personales en el periodo:** "
+                     + " · ".join(f"{lbl} {round(val):,}".replace(",", ".") + f" ({d})"
+                                  for lbl, val, d in records) + "\n")
 
     # --- Forma física: VO2máx y ritmos previstos ---
     lines.append("\n## Forma física\n\n")
@@ -1039,6 +1346,10 @@ def main():
     activity_map = query_activities(conn, start, end, tz_min)
     steps_map = query_steps(conn, start, end, tz_min)
     intensity_map = query_intensity(conn, start, end)
+    floors_map = query_floors(conn, start, end, tz_min)
+    act_detail = query_activity_detail(conn, start, end, tz_min)
+    laps_map = query_laps(conn, start, end, tz_min)
+    records = query_records(conn, start, end)
     vo2max = query_vo2max(conn, end)
     race_pred = query_race_predictions(conn)
 
@@ -1070,6 +1381,7 @@ def main():
 
     md = generate_md(
         sleep_rows, stress_map, bb_map, activity_map, steps_map, intensity_map,
+        floors_map, act_detail, laps_map, records,
         vo2max, race_pred, start, end, cur_stats, base_stats, flags, BASELINE_WEEKS, weekly,
     )
     output_path = OUTPUT_DIR / f"garmin_log_{start.isoformat()}_{end.isoformat()}.md"

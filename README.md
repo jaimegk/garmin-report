@@ -112,11 +112,13 @@ siempre el rango de fechas evaluado, p. ej. `garmin_log_2026-06-22_2026-06-28.md
 | Sección | Métricas |
 |---------|----------|
 | **Resumen** | Cada métrica frente a tu media de ~4 semanas + señales automáticas (incluye VO2máx, regularidad del sueño y minutos de intensidad). En informes de **más de una semana** pasa a una **tabla de evolución semana a semana** con tendencia |
-| **Sueño** | Horas, fases (deep / REM / light), score, **hora de acostarse/despertar + regularidad** y desvelo medio |
+| **Sueño** | Horas, fases (deep / REM / light), score, **hora de acostarse/despertar + regularidad**, desvelo medio, **siestas**, despertares, estrés durante el sueño y Body Battery recuperada |
 | **FC reposo + HRV** | Frecuencia cardíaca en reposo, HRV nocturno (RMSSD aprox.) y estado de HRV |
 | **Respiración y SpO2** | SpO2 nocturna (media / mínima) y frecuencia respiratoria — orientativo, cribado |
 | **Estrés y Body Battery** | Estrés medio diario, máximo y mínimo de Body Battery |
-| **Actividad** | Sesiones (tipo y duración), FC media, **minutos de intensidad**, delta de Body Battery, pasos |
+| **Actividad** | Sesiones (tipo y duración), FC media, **minutos de intensidad**, delta de Body Battery, pasos y pisos |
+| **Detalle de sesiones** | Por sesión: distancia, ritmo, FC media/máx, reparto en zonas de FC, efecto aeróbico/anaeróbico, kcal y métricas propias del deporte (cadencia, zancada, GCT, potencia, D+; SWOLF y largos en natación) |
+| **Vueltas** | Tabla por sesión con tiempo, distancia, ritmo, FC mín/med/máx, cadencia y desnivel (subida / bajada) de cada vuelta |
 | **Forma física** | VO2máx (el predictor de longevidad más potente) y ritmos de carrera previstos |
 
 Las noches de sueño se etiquetan por el día en que te acostaste (no por el de
