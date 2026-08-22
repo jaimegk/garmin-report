@@ -1,4 +1,4 @@
-# Garmin log — semana 2026-W25 (15 jun – 21 jun 2026)
+# 15–21 junio 2026
 
 _Generado el 2026-06-22 · Garmin Forerunner 165_
 

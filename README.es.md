@@ -1,3 +1,8 @@
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="assets/logo/logo-white.png">
+  <img src="assets/logo/logo-256.png" alt="" width="72">
+</picture>
+
 # Garmin Weekly Report
 
 _[English](README.md) · **Español**_
@@ -11,7 +16,10 @@ seguidos, HRV por debajo de lo habitual, noches cortas, horarios irregulares, es
 
 Todo corre en local: tus credenciales y tus datos de salud nunca salen de tu máquina.
 
-![Cabecera del informe: tarjetas de métricas y señales automáticas](docs/screenshot.png)
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/screenshot-dark.png">
+  <img src="docs/screenshot.png" alt="Cabecera del informe: anillos de resumen, cifras y señales automáticas">
+</picture>
 
 **[▶ Ver un informe de ejemplo completo](https://jaimegk.github.io/garmin-report/)** ·
 [versión Markdown](docs/ejemplo_garmin_log.md)
@@ -48,7 +56,7 @@ con más respaldo científico. El análisis completo está en
 [`docs/mortalidad_prematura_y_forerunner165.md`](docs/mortalidad_prematura_y_forerunner165.md).
 
 **Dos formatos, dos lectores.** El `.md` está pensado para pasárselo a una IA; el `.html`,
-para leerlo tú.
+para leerlo tú: un solo fichero autocontenido, sin red, con interruptor de tema claro/oscuro.
 
 ```
 garmin extract (incremental)  →  garmin_data.db (SQLite)  →  output/garmin_log_<inicio>_<fin>.md

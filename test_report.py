@@ -16,9 +16,10 @@ import demo_data
 from generate_report import (
     SleepNight, bed_minutes, wake_minutes, sd_minutes, fmt_duration,
     fmt_trend, fmt_hms, iso_weeks_in_range, compute_flags,
-    fmt_pace, fmt_zones, sync, build_report, summary_tiles,
+    fmt_pace, fmt_zones, sync, build_report, summary_tiles, summary_rings,
+    recovery_score,
 )
-from render_html import md_to_html, svg_bars
+from render_html import md_to_html, svg_sleep_timeline, svg_week_wheel
 
 
 def test_bed_minutes_wraps_after_midnight():
@@ -102,34 +103,54 @@ def test_fmt_zones():
 def test_md_to_html():
     md = (
         "## Sueño\n\n"
-        "| Día | Horas |\n"
-        "|-----|------:|\n"
-        "| Lun | 7h30 |\n\n"
+        "| Día | Horas | Zonas 1-5 |\n"
+        "|-----|------:|:---------:|\n"
+        "| Lun | 7h30 | 10/20/30/40/0 |\n\n"
         "**Media:** 7h30\n\n"
         "- ⚠️ Una señal\n"
+        "- ✅ Otra señal\n"
     )
     out = md_to_html(md, {"Sueño": "<svg id='grafica'></svg>"})
 
-    assert "<h2>Sueño</h2>" in out
-    # La gráfica se inyecta justo después de su encabezado, no al final
-    assert out.index("<svg id='grafica'>") == out.index("</h2>") + len("</h2>") + 1
+    assert '<section class="sec" id="sueno">' in out and "<h2>Sueño</h2>" in out
+    # La gráfica se inyecta al abrir la sección, antes que su contenido
+    assert out.index("<svg id='grafica'>") < out.index("<div class='tw'>")
     # La fila separadora no se convierte en datos y la alineación se traslada
     assert out.count("<tr>") == 2 and "<th>Día</th>" in out
     assert '<td style="text-align:right">7h30</td>' in out
     assert "<strong>Media:</strong>" in out
-    assert "<ul><li>⚠️ Una señal</li></ul>" in out
+    # El reparto por zonas se dibuja: cinco porcentajes → cuatro segmentos de color
+    assert '<i class="z4" style="width:40.0%"></i>' in out and '"z5"' not in out
+    # Las viñetas consecutivas forman una sola lista, con su estado por señal.
+    assert ('<ul class="signals"><li class="warn">⚠️ Una señal</li>'
+            '<li class="good">✅ Otra señal</li></ul>') in out
 
 
-def test_svg_bars_escala_y_huecos():
-    svg = svg_bars("t", ["a", "b", "c"], [[10, None, 20]], ("Pasos",))
-    heights = [float(h) for h in re.findall(r'height="([\d.]+)"', svg)]
+def test_sleep_timeline_coloca_la_noche_en_su_hora():
+    def noche(start_ts, end_ts):
+        return SleepNight("2026-06-16", start_ts, end_ts, 7 * 3600, 3600, 4 * 3600,
+                          2 * 3600, 0, 70, 60, "ok", 48, 95, 92, 14)
 
-    # Dos barras, no tres: el None no dibuja nada
-    assert len(heights) == 2
-    # ...y no desplaza la escala: 10 es la mitad de 20
-    assert abs(heights[0] * 2 - heights[1]) < 0.5
-    # Un rango entero sin datos no revienta
-    assert '<rect' not in svg_bars("t", ["a", "b"], [[None, None]], ("Pasos",))
+    # Acostarse a las 18:00 es el extremo izquierdo del eje; a las 00:00, un
+    # tercio (6 h de las 18 que dura la ventana).
+    svg = svg_sleep_timeline("t", ["a", "b"], [
+        noche("2026-06-15 18:00:00", "2026-06-16 02:00:00"),
+        noche("2026-06-16 00:00:00", "2026-06-16 07:00:00"),
+    ], lambda s: "7h00")
+    xs = [float(x) for x in re.findall(r'<rect x="([\d.]+)"', svg)]
+    pad_l, plot_w = 52, 720 - 52 - 52
+    assert min(xs) == pad_l
+    assert any(abs(x - (pad_l + plot_w / 3)) < 0.5 for x in xs)
+    # Una semana sin ninguna noche registrada no dibuja gráfica.
+    assert svg_sleep_timeline("t", ["a"], [None], lambda s: "") == ""
+
+
+def test_week_wheel_marca_el_objetivo():
+    svg = svg_week_wheel("t", ["L", "M", "X"], [4000, None, 12000], goal=10000)
+    # Un radio por día con dato (el None no dibuja) y solo el que supera el
+    # objetivo se colorea.
+    assert svg.count("<path") == 2 and svg.count('class="wedge good"') == 1
+    assert svg_week_wheel("t", ["L"], [None], goal=10000) == ""
 
 
 def test_sync_pasa_el_rango_a_extract():
@@ -187,6 +208,16 @@ def test_demo_pipeline_end_to_end():
     assert html.startswith("<!doctype html>") and "</html>" in html
     assert '<div class="tiles">' in html and "<svg" in html
     assert "http://" not in html and "https://" not in html
+    # El logo va incrustado —SVG en línea, favicon en base64—, no enlazado: si
+    # assets/ desaparece el informe se genera igual y nadie se entera.
+    assert '<svg class="logo"' in html and 'href="data:image/png;base64,' in html
+
+
+def test_title_range_no_repite_lo_que_no_cambia():
+    tr = generate_report.title_range
+    assert tr(date(2026, 6, 15), date(2026, 6, 21)) == "15–21 junio 2026"
+    assert tr(date(2026, 5, 25), date(2026, 6, 21)) == "25 mayo – 21 junio 2026"
+    assert tr(date(2025, 12, 29), date(2026, 1, 4)) == "29 diciembre 2025 – 4 enero 2026"
 
 
 def test_summary_tiles_conocen_la_direccion_buena():
@@ -198,11 +229,43 @@ def test_summary_tiles_conocen_la_direccion_buena():
     state = {label: st for label, _v, _t, st in summary_tiles(cur, base)}
     assert state["FC reposo"] == "bad"
     assert state["VO2máx"] == "good"
-    assert state["Min. intensidad/sem"] == ""      # ni bueno ni malo por sí solo
+    assert state["Estrés medio"] == ""             # sin cambio, no se moja
+    # Sueño y minutos de intensidad son el valor de un anillo: no se repiten
+    # como tarjeta.
+    assert "Sueño" not in state and "Min. intensidad/sem" not in state
+    assert "Score sueño" in state
 
     # Sin histórico con el que comparar, ninguna tarjeta se moja.
     sin_base = dict(base, n_nights=0)
     assert all(st == "" and tr == "" for _l, _v, tr, st in summary_tiles(cur, sin_base))
+
+
+def test_recovery_score_pondera_hrv_y_fc():
+    base = {"hrv": 60, "rhr": 48, "n_nights": 7}
+    # Semana idéntica a tu media: la nota es el centro de calibración.
+    assert round(recovery_score(dict(base), base)) == generate_report.RECOVERY_CENTER
+    # HRV abajo y FC arriba solo pueden bajarla; al revés, subirla.
+    peor = recovery_score({"hrv": 48, "rhr": 55, "n_nights": 7}, base)
+    mejor = recovery_score({"hrv": 70, "rhr": 44, "n_nights": 7}, base)
+    assert 0 <= peor < generate_report.RECOVERY_CENTER < mejor <= 100
+    # Sin histórico no se inventa una nota, y el anillo se queda sin estado.
+    sin_base = dict(base, n_nights=0)
+    assert recovery_score(dict(base), sin_base) is None
+    label, frac, value, _detail, state = summary_rings(
+        {"hrv": 60, "rhr": 48, "sleep_s": 7 * 3600, "score": 80, "steps": 9000,
+         "intensity_week": 200, "n_nights": 7}, sin_base)[2]
+    assert (label, frac, value, state) == ("Recuperación", None, "–", "")
+
+
+def test_summary_rings_mide_contra_su_objetivo():
+    cur = {"hrv": 60, "rhr": 48, "sleep_s": 5 * 3600, "score": 80, "steps": 9000,
+           "intensity_week": 300, "n_nights": 7}
+    base = dict(cur, n_nights=7)
+    rings = {r[0]: r for r in summary_rings(cur, base)}
+    # 300 min de intensidad = objetivo OMS cumplido: anillo lleno y en verde.
+    assert rings["Actividad"][1] == 1.0 and rings["Actividad"][4] == "good"
+    # 5 h de sueño: cinco octavos de anillo y en rojo.
+    assert rings["Sueño"][1] == 0.625 and rings["Sueño"][4] == "bad"
 
 
 if __name__ == "__main__":

@@ -37,6 +37,9 @@ BASELINE_WEEKS = 4
 DAYS_ES = ["Lun", "Mar", "Mié", "Jue", "Vie", "Sáb", "Dom"]
 MONTHS_ES = ["", "ene", "feb", "mar", "abr", "may", "jun",
              "jul", "ago", "sep", "oct", "nov", "dic"]
+# Abreviado en tablas y etiquetas, entero en el titular: ahí sobra sitio.
+MONTHS_LONG = ["", "enero", "febrero", "marzo", "abril", "mayo", "junio",
+               "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre"]
 
 ACTIVITY_LABELS = {
     "indoor_cycling":      "bici indoor",
@@ -863,6 +866,93 @@ SUMMARY_SPECS = [
 ]
 
 
+# Anillos del resumen. Garmin no da una nota de recuperación en la BD, así que
+# se estima aquí desde cuánto se desvían HRV y FC en reposo de TU media, con la
+# HRV pesando más (es la señal autonómica que antes se mueve). Los coeficientes
+# son una calibración, no una ley: RECOVERY_CENTER es la nota de una semana
+# idéntica a tu media, y las ganancias, cuántos puntos cuesta desviarse.
+RECOVERY_CENTER = 65
+RECOVERY_HRV_GAIN = 250   # puntos por cada 100 % de desviación de la HRV
+RECOVERY_RHR_GAIN = 8     # puntos por cada bpm sobre tu media
+SLEEP_TARGET_S = 8 * 3600
+
+
+def _clamp100(v: float) -> float:
+    return min(100.0, max(0.0, v))
+
+
+def recovery_score(cur_stats: dict, base_stats: dict) -> float | None:
+    """Nota 0–100 de recuperación. None si no hay histórico con el que comparar.
+
+    Cada componente se acota a 0–100 antes de mezclarse: una HRV disparada no
+    debe compensar una FC en reposo por las nubes.
+    """
+    if base_stats["n_nights"] < 5:
+        return None
+    parts = []
+    if cur_stats["hrv"] and base_stats["hrv"]:
+        dev = cur_stats["hrv"] / base_stats["hrv"] - 1
+        parts.append((0.6, _clamp100(RECOVERY_CENTER + dev * RECOVERY_HRV_GAIN)))
+    if cur_stats["rhr"] and base_stats["rhr"]:
+        dev = cur_stats["rhr"] - base_stats["rhr"]
+        parts.append((0.4, _clamp100(RECOVERY_CENTER - dev * RECOVERY_RHR_GAIN)))
+    if not parts:
+        return None
+    return sum(w * v for w, v in parts) / sum(w for w, _ in parts)
+
+
+def _band(value, good, warn) -> str:
+    """Estado por umbrales: bueno / a vigilar / malo. Sin dato, no se moja."""
+    if value is None:
+        return ""
+    return "good" if value >= good else "warn" if value >= warn else "bad"
+
+
+def summary_rings(cur_stats: dict, base_stats: dict) -> list[tuple]:
+    """(etiqueta, fracción 0–1, valor, detalle, estado) de fuera a dentro.
+
+    Tres anillos concéntricos con lo que resume una semana: cuánto te has
+    movido, cuánto has dormido y cómo has recuperado. Cada fracción es
+    "lo logrado / el objetivo", así que el anillo lleno significa lo mismo
+    en los tres aunque las unidades no tengan nada que ver.
+    """
+    im = cur_stats.get("intensity_week")
+    sleep_s = cur_stats["sleep_s"]
+    rec = recovery_score(cur_stats, base_stats)
+
+    sleep_detail = f"Media por noche · objetivo {SLEEP_TARGET_S // 3600} h"
+
+    if rec is None:
+        rec_detail = "Sin histórico suficiente para comparar HRV y FC en reposo"
+    else:
+        rec_detail = ("HRV nocturno y FC en reposo frente a tu media de las "
+                      "semanas anteriores")
+
+    return [
+        ("Actividad",
+         (im / INTENSITY_TARGET_MAX) if im is not None else None,
+         f"{round(im)} min" if im is not None else "–",
+         f"Minutos de intensidad · objetivo OMS "
+         f"{INTENSITY_TARGET_MIN}–{INTENSITY_TARGET_MAX} por semana",
+         _band(im, INTENSITY_TARGET_MIN, INTENSITY_TARGET_MIN / 2)),
+        ("Sueño",
+         (sleep_s / SLEEP_TARGET_S) if sleep_s else None,
+         _sum_dur(sleep_s),
+         sleep_detail,
+         _band(sleep_s, 7 * 3600, 6 * 3600)),
+        ("Recuperación",
+         (rec / 100) if rec is not None else None,
+         f"{round(rec)}" if rec is not None else "–",
+         rec_detail,
+         _band(rec, 67, 34)),
+    ]
+
+
+# Métricas que ya son el valor de un anillo: en las tarjetas serían la misma
+# cifra por segunda vez.
+RING_KEYS = {"sleep_s", "intensity_week"}
+
+
 def summary_tiles(cur_stats: dict, base_stats: dict) -> list[tuple]:
     """(etiqueta, valor, tendencia, estado) por métrica, para la cabecera del HTML.
 
@@ -872,6 +962,8 @@ def summary_tiles(cur_stats: dict, base_stats: dict) -> list[tuple]:
     comparable = base_stats["n_nights"] >= 5
     tiles = []
     for label, key, fmt, unit, as_dur, good in SUMMARY_SPECS:
+        if key in RING_KEYS:
+            continue
         cur, base = cur_stats[key], base_stats[key]
         trend = fmt_trend(cur, base, unit, as_duration=as_dur) if comparable else ""
         state = ""
@@ -903,6 +995,21 @@ def weekly_breakdown(weekly: list, base: dict) -> list[str]:
     legend = " · ".join(f"{w['wk_label']}: {w['range_label']}" for w in weekly)
     out.append(f"\n_{legend}_\n")
     return out
+
+
+def title_range(start: date, end: date) -> str:
+    """Titular del informe: el rango de días, sin repetir lo que no cambia.
+
+    El número de semana ISO es jerga y el resto de la portada ya dice de qué es
+    el informe, así que el titular se queda con lo único que lo identifica.
+    """
+    if (start.year, start.month) == (end.year, end.month):
+        return f"{start.day}–{end.day} {MONTHS_LONG[end.month]} {end.year}"
+    if start.year == end.year:
+        return (f"{start.day} {MONTHS_LONG[start.month]} – "
+                f"{end.day} {MONTHS_LONG[end.month]} {end.year}")
+    return (f"{start.day} {MONTHS_LONG[start.month]} {start.year} – "
+            f"{end.day} {MONTHS_LONG[end.month]} {end.year}")
 
 
 def build_summary(cur_stats: dict, base_stats: dict, flags: list[str], weeks: int,
@@ -979,15 +1086,8 @@ def generate_md(
         for n in sleep_rows
     }
 
-    # Título dinámico
-    if not multi_week:
-        week_num = start.isocalendar()[1]
-        titulo = f"semana {start.year}-W{week_num:02d} ({start.day} {MONTHS_ES[start.month]} – {end.day} {MONTHS_ES[end.month]} {end.year})"
-    else:
-        titulo = f"{start.day} {MONTHS_ES[start.month]} – {end.day} {MONTHS_ES[end.month]} {end.year}"
-
     lines = [
-        f"# Garmin log — {titulo}\n\n",
+        f"# {title_range(start, end)}\n\n",
         f"_Generado el {(generated_on or date.today()).isoformat()} · Garmin Forerunner 165_\n\n",
     ]
     if notice:
@@ -1401,8 +1501,14 @@ def build_report(conn: sqlite3.Connection, start: date, end: date,
         generated_on, notice,
     )
 
+    # Las medias del periodo previo son la cruz del mapa de recuperación: sin
+    # ellas la gráfica no tiene contra qué comparar y no se dibuja.
+    baselines = ({"rhr": base_stats["rhr"], "hrv": base_stats["hrv"]}
+                 if base_stats["n_nights"] >= 5 else None)
     return md, render_html.render(md, sleep_rows, stress_map, bb_map, steps_map,
-                                  start, end, tiles=summary_tiles(cur_stats, base_stats))
+                                  start, end, tiles=summary_tiles(cur_stats, base_stats),
+                                  rings=summary_rings(cur_stats, base_stats),
+                                  baselines=baselines)
 
 
 # ---------------------------------------------------------------------------
