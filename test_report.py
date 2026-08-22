@@ -18,7 +18,7 @@ from generate_report import (
     fmt_trend, fmt_hms, iso_weeks_in_range, compute_flags,
     fmt_pace, fmt_zones, sync, build_report, summary_tiles, summary_rings,
     recovery_score, compute_sri, compute_social_jetlag, compute_hrv_stability,
-    compute_acwr_ewma, compute_aerobic_decoupling,
+    compute_acwr_ewma, compute_aerobic_decoupling, query_acwr,
 )
 from render_html import md_to_html, svg_sleep_timeline, svg_week_wheel
 
@@ -64,6 +64,27 @@ def test_compute_acwr_ewma():
     res_spike = compute_acwr_ewma(spike_loads)
     assert res_spike["acwr"] > 1.35
     assert res_spike["status"] in ("overload", "danger")
+
+
+def test_query_acwr_exige_historico_suficiente():
+    # Rellenar con carga 0 los días anteriores a la primera sincronización
+    # hundía la carga crónica y disparaba un falso "pico de carga agudo".
+    conn = sqlite3.connect(":memory:")
+    conn.execute("CREATE TABLE training_load (date TEXT, total_intensity_minutes REAL,"
+                 " daily_training_load_acute REAL, daily_training_load_chronic REAL,"
+                 " daily_acute_chronic_workload_ratio REAL)")
+    end = date(2026, 6, 21)
+
+    def add(days):
+        conn.executemany(
+            "INSERT INTO training_load (date, total_intensity_minutes) VALUES (?, ?)",
+            [((end - timedelta(days=i)).isoformat(), 40.0) for i in days])
+
+    add(range(14))                       # dos semanas: insuficiente
+    assert query_acwr(conn, end)["acwr"] is None
+
+    add(range(14, 40))                   # ya hay más de 4 semanas
+    assert query_acwr(conn, end)["acwr"] == 1.0
 
 
 def test_compute_aerobic_decoupling():

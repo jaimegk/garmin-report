@@ -119,7 +119,8 @@ def to_local(ts, offset_hours):
     """Convierte un timestamp UTC de Garmin a hora local.
 
     Garmin guarda start_ts/end_ts en UTC; la hora local es UTC +
-    timezone_offset_hours.
+    `timezone_offset_hours`. Sin esto, las horas de acostarse/despertar salen
+    desfasadas (p. ej. 2 h en horario de verano peninsular).
     """
     if not ts or offset_hours is None:
         return ts
@@ -151,7 +152,8 @@ def fmt_pace(meters_per_sec, sport: str) -> str:
     - Carrera / caminar: '5:23/km' (minutos:segundos por km).
     - Ciclismo: '26.4 km/h' (velocidad, no ritmo).
     - Natación: '2:10/100m' (ritmo por 100 m).
-    - Deportes sin distancia/ritmo útil (gym, pádel): '–'.
+    - Deportes sin distancia/ritmo útil (gym, pádel): '–'. Ahí la distancia es
+      deambular por la pista, y enseñar min/km es ruido.
 
     Se compara por subcadena, no por lista cerrada: Garmin inventa variantes sin
     parar (road_biking, gravel_cycling, obstacle_run...) y una lista exacta las
@@ -389,6 +391,12 @@ def compute_hrv_stability(cur_hrv_list: list[float], base_hrv_list: list[float])
     return res
 
 
+# La carga crónica es una ventana de 4 semanas: por debajo de eso el cociente
+# ACWR compara la semana contra sí misma y no dice nada.
+ACWR_MIN_DAYS = 28
+NO_ACWR = {"acute": None, "chronic": None, "acwr": None, "status": ""}
+
+
 def compute_acwr_ewma(daily_loads: list[float], acute_days: int = 7, chronic_days: int = 28) -> dict:
     """Calcula la Carga Aguda:Crónica (ACWR) mediante Media Móvil Ponderada Exponencialmente (EWMA).
 
@@ -397,7 +405,7 @@ def compute_acwr_ewma(daily_loads: list[float], acute_days: int = 7, chronic_day
     EWMA_today = Load_today * lambda + EWMA_yesterday * (1 - lambda)
     """
     if not daily_loads or len(daily_loads) < 7:
-        return {"acute": None, "chronic": None, "acwr": None, "status": ""}
+        return dict(NO_ACWR)
 
     lambda_a = 2.0 / (acute_days + 1.0)
     lambda_c = 2.0 / (chronic_days + 1.0)
@@ -411,7 +419,7 @@ def compute_acwr_ewma(daily_loads: list[float], acute_days: int = 7, chronic_day
         chronic = l * lambda_c + chronic * (1.0 - lambda_c)
 
     if chronic <= 0:
-        return {"acute": round(acute, 1), "chronic": 0.0, "acwr": None, "status": ""}
+        return dict(NO_ACWR, acute=round(acute, 1), chronic=0.0)
 
     acwr = round(acute / chronic, 2)
     if acwr > 1.50:
@@ -771,9 +779,17 @@ def query_acwr(conn: sqlite3.Connection, end: date) -> dict:
         history = {}
 
     if not history:
-        return {"acute": None, "chronic": None, "acwr": None, "status": ""}
+        return dict(NO_ACWR)
 
-    days_seq = [start_hist + timedelta(days=i) for i in range((end - start_hist).days + 1)]
+    # El histórico empieza donde hay dato, no 60 días atrás: rellenar con carga 0
+    # los días previos a la primera sincronización hunde la carga crónica y
+    # dispara falsos "pico de carga agudo" a todo el que lleve poco con el reloj.
+    # Dentro del tramo con datos, un hueco sí es un día de descanso (carga 0).
+    first = date.fromisoformat(min(history))
+    if (end - first).days + 1 < ACWR_MIN_DAYS:
+        return dict(NO_ACWR)
+
+    days_seq = [first + timedelta(days=i) for i in range((end - first).days + 1)]
     loads = [float(history.get(d.isoformat(), 0) or 0) for d in days_seq]
     return compute_acwr_ewma(loads)
 
@@ -1127,7 +1143,9 @@ def compute_flags(sleep_rows: list, cur_stats: dict, base_stats: dict, act_detai
                 f"(objetivo {INTENSITY_TARGET_MIN}–{INTENSITY_TARGET_MAX})."
             )
 
-    # 9. SpO2 nocturna MEDIA baja varias noches
+    # 9. SpO2 nocturna MEDIA baja varias noches (cribado, no diagnóstico).
+    # Usamos la media, no el mínimo: caídas puntuales a 85-89% son normales en
+    # gente sana; lo relevante es una saturación media sostenidamente baja.
     low_spo2 = sum(1 for n in sleep_rows if n.spo2_avg is not None and n.spo2_avg < 92)
     if low_spo2 >= 3:
         flags.append(
@@ -1219,6 +1237,8 @@ def _sum_reg(v):
 # Métricas del Resumen: (etiqueta, clave en metric_stats, formateador, unidad,
 # es_duración, dirección buena). Única fuente para las tres variantes de tabla
 # (semanal, sin histórico, multi-semana) y para las tarjetas del HTML.
+# La dirección no se puede deducir del signo de la tendencia: subir es malo en FC
+# en reposo y bueno en VO2máx. None = ni bueno ni malo por sí solo.
 SUMMARY_SPECS = [
     ("Sueño",                   "sleep_s",        _sum_dur,                       "",     True,  "up"),
     ("Regularidad (SRI)",       "sri",            lambda v: _sum_num(v, "/100"),  "/100", False, "up"),
@@ -1277,7 +1297,13 @@ def _band(value, good, warn) -> str:
 
 
 def summary_rings(cur_stats: dict, base_stats: dict) -> list[tuple]:
-    """(etiqueta, fracción 0–1, valor, detalle, estado) de fuera a dentro."""
+    """(etiqueta, fracción 0–1, valor, detalle, estado) de fuera a dentro.
+
+    Tres anillos concéntricos con lo que resume una semana: cuánto te has
+    movido, cuánto has dormido y cómo has recuperado. Cada fracción es
+    "lo logrado / el objetivo", así que el anillo lleno significa lo mismo
+    en los tres aunque las unidades no tengan nada que ver.
+    """
     im = cur_stats.get("intensity_week")
     sleep_s = cur_stats.get("sleep_s")
     rec = recovery_score(cur_stats, base_stats)
@@ -1316,7 +1342,12 @@ RING_KEYS = {"sleep_s", "intensity_week"}
 
 
 def summary_tiles(cur_stats: dict, base_stats: dict) -> list[tuple]:
-    """(etiqueta, valor, tendencia, estado) por métrica, para la cabecera del HTML."""
+    """(etiqueta, valor, tendencia, estado) por métrica, para la cabecera del HTML.
+
+    El estado es "good"/"bad"/"" según si la métrica se ha movido hacia su lado
+    bueno; sin histórico con el que comparar, no se moja. Las métricas que se
+    leen contra un rango fijo (ACWR, SRI, CV de HRV) sí se pronuncian solas.
+    """
     comparable = base_stats.get("n_nights", 0) >= 5
     tiles = []
     for label, key, fmt, unit, as_dur, good in SUMMARY_SPECS:

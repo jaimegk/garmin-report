@@ -97,13 +97,13 @@ def _grid(lo: float, hi: float, fmt, width=W, pad_l=PAD_L, pad_r=PAD_R,
     return "".join(out)
 
 
-def _xlabels(labels) -> str:
+def _xlabels(labels, plot_w=PLOT_W) -> str:
     """Etiquetas del eje X, diezmadas si no caben sin solaparse."""
     n = len(labels)
     if not n:
         return ""
     step = max(1, round(n / 12))
-    slot = PLOT_W / n
+    slot = plot_w / n
     y = H - PAD_B + 15
     return "".join(
         f'<text x="{PAD_L + slot * (i + 0.5):.1f}" y="{y}" class="tick" text-anchor="middle">{_esc(lab)}</text>'
@@ -473,8 +473,14 @@ def svg_spo2_resp(title, labels, spo2_mins, spo2_avgs, resp_avgs) -> str:
     if not has_spo2 and not has_resp:
         return ""
 
+    # Dos escalas incompatibles (% y resp/min) en un solo dibujo solo se pueden
+    # leer si cada una tiene su propio eje: SpO2 a la izquierda, respiración a
+    # la derecha. Sin el eje derecho los puntos de respiración caen sobre una
+    # rejilla de porcentajes que no significa nada para ellos.
+    pad_r = 52
+    plot_w = W - PAD_L - pad_r
     lo_spo2, hi_spo2 = 85.0, 100.0
-    slot = PLOT_W / len(labels) if labels else PLOT_W
+    slot = plot_w / len(labels) if labels else plot_w
     def px(i): return PAD_L + slot * (i + 0.5)
     def py_spo2(v): return PAD_T + PLOT_H * (1 - (v - lo_spo2) / (hi_spo2 - lo_spo2))
 
@@ -484,10 +490,24 @@ def svg_spo2_resp(title, labels, spo2_mins, spo2_avgs, resp_avgs) -> str:
         hi_resp += 2
     def py_resp(v): return PAD_T + PLOT_H * (1 - (v - lo_resp) / (hi_resp - lo_resp))
 
-    parts = [_grid(lo_spo2, hi_spo2, lambda v: f"{v:.0f}%"), _xlabels(labels)]
+    parts = [_grid(lo_spo2, hi_spo2, lambda v: f"{v:.0f}%", pad_r=pad_r),
+             _xlabels(labels, plot_w)]
+
+    # Eje derecho: la misma rejilla, rotulada en resp/min y del color de la línea.
+    # La unidad va pegada al tick de arriba; un rótulo aparte se solaparía con él.
+    if resp_vals:
+        dec = 0 if hi_resp - lo_resp >= 4 else 1
+        for frac in (0.0, 0.5, 1.0):
+            v = lo_resp + (hi_resp - lo_resp) * frac
+            unit = " resp/min" if frac == 1.0 else ""
+            parts.append(
+                f'<text x="{W - pad_r + 6}" y="{PAD_T + PLOT_H * (1 - frac):.1f}"'
+                f' class="tick resp" text-anchor="start"'
+                f' dominant-baseline="central">{v:.{dec}f}{unit}</text>'
+            )
 
     y95 = py_spo2(95)
-    parts.append(f'<line x1="{PAD_L}" y1="{y95:.1f}" x2="{W - PAD_R}" y2="{y95:.1f}" class="band-line" stroke="var(--accent)" stroke-dasharray="3,3" opacity="0.4"/>')
+    parts.append(f'<line x1="{PAD_L}" y1="{y95:.1f}" x2="{W - pad_r}" y2="{y95:.1f}" class="band-line" stroke="var(--accent)" stroke-dasharray="3,3" opacity="0.4"/>')
 
     bw = min(slot * 0.34, 18)
     for i, lab in enumerate(labels):
@@ -513,8 +533,10 @@ def svg_spo2_resp(title, labels, spo2_mins, spo2_avgs, resp_avgs) -> str:
             f'<title>{_esc(f"{labels[i]} · Respiración {v:.1f} resp/min")}</title></circle>'
         )
 
-    items = [("SpO2 mín–media", "var(--accent)"), ("Respiración media", "var(--ph-2)")]
-    return _frame(title, "".join(parts), items, note="Línea punteada: referencia 95% SpO2.")
+    items = [("SpO2 mín–media (eje izq.)", "var(--accent)"),
+             ("Respiración media (eje der.)", "var(--ph-2)")]
+    return _frame(title, "".join(parts), items,
+                  note="Línea punteada: referencia 95% SpO2. Cada serie tiene su propio eje.")
 
 
 def svg_intensity_bars(title, labels, values, goal=None) -> str:
@@ -620,6 +642,7 @@ def build_charts(sleep_rows, stress_map, bb_map, steps_map, start: date, end: da
     """Devuelve {título de sección → svg}, alineado día a día con las tablas."""
     baselines = baselines or {}
     intensity_map = intensity_map or {}
+    # Mismo desfase que generate_md: la noche se cuelga del día en que te acostaste.
     sleep_by_date = {
         (date.fromisoformat(n.calendar_date) - timedelta(days=1)).isoformat(): n
         for n in sleep_rows
@@ -643,6 +666,8 @@ def build_charts(sleep_rows, stress_map, bb_map, steps_map, start: date, end: da
     rhr = [n.rhr if n else None for n in nights]
     hrv = [n.hrv if n else None for n in nights]
     pair = []
+    # Dos gráficas y no dos líneas: bpm y ms son escalas distintas, superponerlas
+    # en un eje compartido haría parecer que se cruzan cuando no significan nada.
     if any(v is not None for v in rhr):
         pair.append(svg_line("FC en reposo", labels, rhr, "FC reposo", unit=" bpm"))
     if any(v is not None for v in hrv):
@@ -1295,6 +1320,7 @@ figcaption.note { font-size: .76rem; font-weight: 400; color: var(--muted);
 .swc-band { fill: var(--ring-good); opacity: .10; }
 .spo2-bar { fill: var(--accent); opacity: .45; }
 .line.resp { fill: none; stroke: var(--ph-2); stroke-width: 1.8; }
+.tick.resp { fill: var(--ph-2); }
 .dot.resp { fill: var(--ph-2); stroke: var(--paper); stroke-width: 1.5; }
 .int-bar { fill: var(--ink); opacity: .65; }
 .int-bar.good { fill: var(--ring-good); opacity: .85; }
@@ -1378,11 +1404,14 @@ def render(md: str, sleep_rows, stress_map, bb_map, steps_map, start: date, end:
            tiles=(), rings=(), baselines=None, intensity_map=None, vo2max=None, race_pred=None) -> str:
     charts = build_charts(sleep_rows, stress_map, bb_map, steps_map, start, end,
                           baselines, intensity_map=intensity_map, vo2max=vo2max, race_pred=race_pred)
+    # Anillos y cifras se inyectan como el resto: bajo el `## Resumen`, y en ese
+    # orden — primero el vistazo, después los números.
     if rings or tiles:
         charts["Resumen"] = rings_html(rings) + tiles_html(tiles)
     title = f"Garmin log {start.isoformat()} – {end.isoformat()}"
     body = md_to_html(md, charts)
     body = body.replace("<h1>", f"<h1>{logo_svg()}", 1)
+    # El h1 y su entradilla van antes de la primera sección: son la portada.
     head, _, rest = body.partition('<section class="sec"')
     body = (f'<header class="lede">{head}</header><section class="sec"{rest}'
             if rest else f'<header class="lede">{head}</header>')
