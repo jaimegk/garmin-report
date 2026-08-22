@@ -204,6 +204,8 @@ def build(db_path) -> tuple[date, date]:
                     avg_stride_length=round(112 + rnd.uniform(-6, 6), 1),
                     avg_ground_contact_time=round(255 + rnd.uniform(-12, 12), 1),
                     avg_vertical_oscillation=round(8.4 + rnd.uniform(-0.5, 0.5), 1),
+                    avg_vertical_ratio=round((8.4 / 1.12) + (1.0 if hard else rnd.uniform(-0.3, 0.3)), 1),
+                    avg_ground_contact_balance=round(51.8 if (hard and kind == "trail_running") else (50.1 + rnd.uniform(-0.3, 0.3)), 1),
                     avg_power=round(255 + rnd.uniform(-15, 15), 1),
                     elevation_gain=float(rnd.randint(250, 620) if kind == "trail_running"
                                         else rnd.randint(35, 130)))

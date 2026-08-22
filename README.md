@@ -1,3 +1,8 @@
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="assets/logo/logo-white.png">
+  <img src="assets/logo/logo-256.png" alt="" width="72">
+</picture>
+
 # Garmin Weekly Report
 
 _**English** · [Español](README.es.md)_
@@ -16,7 +21,10 @@ Everything runs locally. Your credentials and your health data never leave your 
 
 > The report itself is written in Spanish. The code, the docs and this README are in English.
 
-![Report header: metric cards and automatic signals](docs/screenshot.png)
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/screenshot-dark.png">
+  <img src="docs/screenshot.png" alt="Report header: summary rings, metric sheet and automatic signals">
+</picture>
 
 **[▶ See a full example report](https://jaimegk.github.io/garmin-report/)** ·
 [Markdown version](docs/ejemplo_garmin_log.md)
@@ -36,7 +44,7 @@ No account, no credentials, no network.
 
 ## What makes it different
 
-**Signals, not just numbers.** The report opens by telling you what to look at. Nine rules
+**Signals, not just numbers.** The report opens by telling you what to look at. Twelve rules
 compare the week against your baseline and flag whatever stands out.
 
 **Your baseline, not the population's.** "49 bpm" means nothing on its own; "49 bpm when
@@ -53,7 +61,7 @@ write-up (in Spanish) is in
 [`docs/mortalidad_prematura_y_forerunner165.md`](docs/mortalidad_prematura_y_forerunner165.md).
 
 **Two formats, two readers.** The `.md` is meant to be handed to an AI; the `.html` is meant
-to be read by you.
+to be read by you — a single self-contained file, no network, with a light/dark switch.
 
 ```
 garmin extract (incremental)  →  garmin_data.db (SQLite)  →  output/garmin_log_<start>_<end>.md

@@ -33,8 +33,11 @@ The demo is deterministic — fixed seed, fixed dates, fixed "generated on" date
 clean checkout reproduces those files byte for byte. If a diff shows up that you did
 not expect, something changed in the report. That is the point.
 
-`docs/screenshot.png` and `docs/screenshot-charts.png` are manual captures of that
-same HTML. Retake them when the layout changes visibly, not on every data tweak.
+`docs/screenshot.png` (light), `docs/screenshot-dark.png` (the same view with the
+theme switched) and `docs/screenshot-charts.png` are manual captures of that same
+HTML. Retake them when the layout changes visibly, not on every data tweak — and
+retake the pair together, or the README's light/dark `<picture>` shows two
+different reports.
 
 ## Before publishing: the clean-checkout check
 
@@ -109,7 +112,12 @@ retune the thresholds in `compute_flags`, re-check that the example still lights
   `README.es.md` mirrors `README.md`.
 - The `.md` output is written to be pasted into an AI chat; the `.html` is written to
   be read by a human. When adding a section, ask which one it serves.
-- The HTML must stay self-contained: no JavaScript, no external requests, inline SVG
-  and CSS. The end-to-end test asserts no `http://` or `https://` survives in it.
+- The HTML must stay self-contained: no external requests, inline SVG and CSS.
+  The end-to-end test asserts no `http://` or `https://` survives in it. The only
+  script is the light/dark toggle.
+- The logo in `assets/logo/` is embedded, never linked: `logo.svg` goes inline in
+  the topbar (xmlns stripped — a namespace URL would trip the no-URL assertion —
+  and `currentColor`, so one file serves both themes), `favicon-64.png` goes in as
+  a base64 `data:` URI. Ship `assets/` or the report loses both, silently.
 - `SUMMARY_SPECS` is the single source for the summary metrics — the weekly table,
   the multi-week table, the no-history table and the HTML cards all read from it.

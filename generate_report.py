@@ -14,6 +14,7 @@ Uso:
 """
 
 import argparse
+import math
 import shutil
 import sqlite3
 import statistics
@@ -37,6 +38,9 @@ BASELINE_WEEKS = 4
 DAYS_ES = ["Lun", "Mar", "Mié", "Jue", "Vie", "Sáb", "Dom"]
 MONTHS_ES = ["", "ene", "feb", "mar", "abr", "may", "jun",
              "jul", "ago", "sep", "oct", "nov", "dic"]
+# Abreviado en tablas y etiquetas, entero en el titular: ahí sobra sitio.
+MONTHS_LONG = ["", "enero", "febrero", "marzo", "abril", "mayo", "junio",
+               "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre"]
 
 ACTIVITY_LABELS = {
     "indoor_cycling":      "bici indoor",
@@ -80,7 +84,7 @@ SleepNight = namedtuple("SleepNight", [
     "need_actual", "need_baseline", "breathing_severity",
 ])
 # Los campos de contexto son opcionales: no todos los relojes los rellenan.
-SleepNight.__new__.__defaults__ = (None,) * 8
+SleepNight.__new__.__defaults__ = (None,) * 20
 
 # Etiqueta de esfuerzo de la sesión (training_effect_label de Garmin) → español
 TE_LABELS_ES = {
@@ -118,20 +122,18 @@ def to_local(ts, offset_hours):
     `timezone_offset_hours`. Sin esto, las horas de acostarse/despertar salen
     desfasadas (p. ej. 2 h en horario de verano peninsular).
     """
-    if not ts:
+    if not ts or offset_hours is None:
         return ts
     try:
         dt = datetime.fromisoformat(str(ts))
     except ValueError:
-        return ts
-    return (dt + timedelta(hours=offset_hours or 0)).strftime("%Y-%m-%d %H:%M:%S")
+        return ts  # timestamp con formato inesperado: mejor crudo que reventar el informe
+    return (dt + timedelta(hours=offset_hours)).strftime("%Y-%m-%d %H:%M:%S")
 
 
 def fmt_clock(ts) -> str:
-    """'2026-06-25 22:08:28' → '22:08'. '–' si falta."""
-    if not ts or len(str(ts)) < 16:
-        return "–"
-    return str(ts)[11:16]
+    """'2026-06-15 23:12:00' → '23:12'; '–' si no hay dato."""
+    return str(ts)[11:16] if ts and len(str(ts)) >= 16 else "–"
 
 
 def fmt_hms(seconds) -> str:
@@ -144,26 +146,34 @@ def fmt_hms(seconds) -> str:
     return f"{h}:{m:02d}:{s:02d}" if h else f"{m}:{s:02d}"
 
 
-# Deportes en los que el ritmo/velocidad significa algo. En pádel o gym la
-# distancia es deambular por la pista: mostrar min/km ahí es ruido.
-PACE_SPORTS = ("running", "walking", "hiking", "cycling", "biking", "swim")
+def fmt_pace(meters_per_sec, sport: str) -> str:
+    """Ritmo formateado según el deporte.
 
+    - Carrera / caminar: '5:23/km' (minutos:segundos por km).
+    - Ciclismo: '26.4 km/h' (velocidad, no ritmo).
+    - Natación: '2:10/100m' (ritmo por 100 m).
+    - Deportes sin distancia/ritmo útil (gym, pádel): '–'. Ahí la distancia es
+      deambular por la pista, y enseñar min/km es ruido.
 
-def fmt_pace(speed_ms, atype: str) -> str:
-    """Ritmo/velocidad según deporte: min/km corriendo, min/100m nadando, km/h en bici."""
-    if not speed_ms or not any(s in atype for s in PACE_SPORTS):
+    Se compara por subcadena, no por lista cerrada: Garmin inventa variantes sin
+    parar (road_biking, gravel_cycling, obstacle_run...) y una lista exacta las
+    deja a todas en '–'.
+    """
+    if not meters_per_sec or meters_per_sec <= 0:
         return "–"
-    if "swim" in atype:
-        sec = 100 / speed_ms
-        return f"{int(sec // 60)}:{int(sec % 60):02d}/100m"
-    if "cycling" in atype or "biking" in atype:
-        return f"{speed_ms * 3.6:.1f} km/h"
-    sec = 1000 / speed_ms
-    return f"{int(sec // 60)}:{int(sec % 60):02d}/km"
+    if "swim" in sport:
+        sec_per_100m = 100.0 / meters_per_sec
+        return f"{int(sec_per_100m // 60)}:{int(round(sec_per_100m % 60)):02d}/100m"
+    if "cycl" in sport or "bik" in sport:
+        return f"{meters_per_sec * 3.6:.1f} km/h"
+    if any(s in sport for s in ("run", "walk", "hik")):
+        sec_per_km = 1000.0 / meters_per_sec
+        return f"{int(sec_per_km // 60)}:{int(round(sec_per_km % 60)):02d}/km"
+    return "–"
 
 
-def fmt_zones(z) -> str:
-    """Reparto de tiempo en zonas de FC como porcentajes Z1/Z2/Z3/Z4/Z5."""
+def fmt_zones(z: list) -> str:
+    """Reparto porcentual del tiempo en zonas 1-5 de FC: '8/23/36/26/6'."""
     vals = [v or 0 for v in z]
     total = sum(vals)
     if not total:
@@ -174,25 +184,33 @@ def fmt_zones(z) -> str:
 def sport_extras(a: dict) -> str:
     """Métricas propias del deporte, compactadas en una celda."""
     p = []
-    if a["avg_running_cadence"]:
+    if a.get("avg_running_cadence"):
         p.append(f"cad {round(a['avg_running_cadence'])} ppm")
-    if a["avg_stride_length"]:
+    if a.get("avg_stride_length"):
         p.append(f"zancada {a['avg_stride_length'] / 100:.2f} m")
-    if a["avg_ground_contact_time"]:
+    if a.get("avg_ground_contact_time"):
         p.append(f"GCT {round(a['avg_ground_contact_time'])} ms")
-    if a["avg_vertical_oscillation"]:
+    if a.get("avg_vertical_ratio"):
+        p.append(f"ratio vert. {a['avg_vertical_ratio']:.1f}%")
+    elif a.get("avg_vertical_oscillation"):
         p.append(f"osc. vert. {a['avg_vertical_oscillation']:.1f} cm")
-    if a["avg_power"] or a["cycling_power"]:
+    if a.get("avg_ground_contact_balance"):
+        p.append(f"apoyo {a['avg_ground_contact_balance']:.1f}% I")
+    if a.get("decoupling") is not None:
+        p.append(f"deriva {a['decoupling']:+.1f}%")
+    if a.get("hrr_60"):
+        p.append(f"HRR60 {round(a['hrr_60'])} bpm")
+    if a.get("avg_power") or a.get("cycling_power"):
         p.append(f"pot. {round(a['avg_power'] or a['cycling_power'])} W")
-    if a["elevation_gain"]:
+    if a.get("elevation_gain"):
         p.append(f"D+ {round(a['elevation_gain'])} m")
-    if a["avg_swolf"]:
+    if a.get("avg_swolf"):
         p.append(f"SWOLF {round(a['avg_swolf'])}")
-    if a["active_lengths"]:
+    if a.get("active_lengths"):
         p.append(f"{a['active_lengths']} largos de {round(a['pool_length'] / 100)} m")
-    if a["strokes"]:
+    if a.get("strokes"):
         p.append(f"{round(a['strokes'])} brazadas")
-    if a["avg_biking_cadence"]:
+    if a.get("avg_biking_cadence"):
         p.append(f"cad {round(a['avg_biking_cadence'])} rpm")
     return " · ".join(p) if p else "–"
 
@@ -227,6 +245,240 @@ def sd_minutes(values):
     if len(vals) < 3:
         return None
     return statistics.stdev(vals)
+
+
+def compute_sri(nights: list) -> int | None:
+    """Índice de Regularidad del Sueño (SRI, Sleep Regularity Index).
+
+    Calcula la probabilidad (escalada de 0 a 100) de que un individuo esté en el
+    mismo estado (dormido vs despierto) en dos momentos separados por exactamente
+    24 horas (Phillips et al., 2017; Windred et al., 2024).
+
+    SRI = -100 (inversión total día/noche), 0 (azar), 100 (rutina idéntica).
+    """
+    if not nights or len(nights) < 2:
+        return None
+
+    intervals = []
+    for n in nights:
+        if n and n.start_ts and n.end_ts:
+            try:
+                s = datetime.fromisoformat(str(n.start_ts))
+                e = datetime.fromisoformat(str(n.end_ts))
+                if s < e:
+                    intervals.append((s, e))
+            except (ValueError, TypeError):
+                continue
+
+    if len(intervals) < 2:
+        return None
+
+    intervals.sort(key=lambda x: x[0])
+    first_date = intervals[0][0].date()
+    last_date = intervals[-1][1].date()
+    first_dt = datetime(first_date.year, first_date.month, first_date.day, 18, 0, 0)
+    if intervals[0][0] < first_dt:
+        first_dt -= timedelta(days=1)
+    last_dt = datetime(last_date.year, last_date.month, last_date.day, 18, 0, 0)
+
+    total_days = (last_dt - first_dt).days
+    if total_days < 2:
+        return None
+
+    def is_asleep(dt: datetime) -> bool:
+        return any(start <= dt < end for start, end in intervals)
+
+    EPOCH_MINUTES = 5
+    concordance = 0
+    total_samples = 0
+
+    curr = first_dt
+    end_eval = last_dt - timedelta(days=1)
+    while curr < end_eval:
+        s1 = is_asleep(curr)
+        s2 = is_asleep(curr + timedelta(days=1))
+        concordance += 1 if (s1 == s2) else -1
+        total_samples += 1
+        curr += timedelta(minutes=EPOCH_MINUTES)
+
+    if not total_samples:
+        return None
+
+    sri_val = round((concordance / total_samples) * 100)
+    return max(0, min(100, sri_val))
+
+
+def compute_social_jetlag(nights: list) -> int | None:
+    """Calcula el Jetlag Social en minutos.
+
+    Diferencia absoluta entre el punto medio del sueño en días libres/fin de semana
+    (viernes-noche y sábado-noche) y días laborables (domingo a jueves noche) (Roenneberg et al., 2019).
+    """
+    if not nights or len(nights) < 3:
+        return None
+
+    workday_mids = []
+    weekend_mids = []
+
+    for n in nights:
+        if not n or not n.start_ts or not n.end_ts:
+            continue
+        try:
+            s = datetime.fromisoformat(str(n.start_ts))
+            e = datetime.fromisoformat(str(n.end_ts))
+            midpoint = s + (e - s) / 2
+            mid_minutes = midpoint.hour * 60 + midpoint.minute
+            if mid_minutes < 12 * 60:
+                mid_minutes += 24 * 60
+
+            night_day = (s - timedelta(days=1)).date() if s.hour < 12 else s.date()
+            if night_day.weekday() in (4, 5):
+                weekend_mids.append(mid_minutes)
+            else:
+                workday_mids.append(mid_minutes)
+        except (ValueError, TypeError):
+            continue
+
+    if not workday_mids or not weekend_mids:
+        return None
+
+    avg_work = statistics.mean(workday_mids)
+    avg_free = statistics.mean(weekend_mids)
+    return round(abs(avg_free - avg_work))
+
+
+def compute_hrv_stability(cur_hrv_list: list[float], base_hrv_list: list[float]) -> dict:
+    """Evalúa la estabilidad autonómica semanal de HRV y calcula la banda SWC individual.
+
+    - Coeficiente de variación (CV de lnRMSSD): CV = (SD / Media) * 100 (Plews et al., 2012).
+    - Banda SWC (Smallest Worthwhile Change): Media_base ± 0.75 * SD_base (Buchheit, 2014; Plews et al., 2013).
+      Aplica un margen fisiológico proporcional (mínimo ~8% de la media o 4.5 ms) para que el
+      pasillo de referencia sea representativo y no colapse en periodos con baja desviación.
+    """
+    valid_cur = [float(v) for v in cur_hrv_list if v and v > 0]
+    valid_base = [float(v) for v in base_hrv_list if v and v > 0]
+
+    res = {
+        "cv": None,
+        "swc_low": None,
+        "swc_high": None,
+        "status": "unknown"
+    }
+
+    if len(valid_cur) >= 3:
+        ln_cur = [math.log(v) for v in valid_cur]
+        mean_ln = statistics.mean(ln_cur)
+        sd_ln = statistics.stdev(ln_cur)
+        if mean_ln > 0:
+            res["cv"] = round((sd_ln / mean_ln) * 100, 1)
+
+    if len(valid_base) >= 5:
+        base_mean = statistics.mean(valid_base)
+        base_sd = statistics.stdev(valid_base)
+        swc_margin = max(0.75 * base_sd, base_mean * 0.08, 4.5)
+        res["swc_low"] = round(base_mean - swc_margin, 1)
+        res["swc_high"] = round(base_mean + swc_margin, 1)
+
+        if valid_cur:
+            cur_mean = statistics.mean(valid_cur)
+            if cur_mean < res["swc_low"]:
+                res["status"] = "low"
+            elif cur_mean > res["swc_high"]:
+                res["status"] = "high"
+            else:
+                res["status"] = "balanced"
+
+    return res
+
+
+# La carga crónica es una ventana de 4 semanas: por debajo de eso el cociente
+# ACWR compara la semana contra sí misma y no dice nada.
+ACWR_MIN_DAYS = 28
+NO_ACWR = {"acute": None, "chronic": None, "acwr": None, "status": ""}
+
+
+def compute_acwr_ewma(daily_loads: list[float], acute_days: int = 7, chronic_days: int = 28) -> dict:
+    """Calcula la Carga Aguda:Crónica (ACWR) mediante Media Móvil Ponderada Exponencialmente (EWMA).
+
+    Williams et al. (2017) & Gabbett (2016):
+    lambda_a = 2 / (acute_days + 1)
+    EWMA_today = Load_today * lambda + EWMA_yesterday * (1 - lambda)
+    """
+    if not daily_loads or len(daily_loads) < 7:
+        return dict(NO_ACWR)
+
+    lambda_a = 2.0 / (acute_days + 1.0)
+    lambda_c = 2.0 / (chronic_days + 1.0)
+
+    acute = float(daily_loads[0])
+    chronic = float(daily_loads[0])
+
+    for load in daily_loads[1:]:
+        l = float(load or 0.0)
+        acute = l * lambda_a + acute * (1.0 - lambda_a)
+        chronic = l * lambda_c + chronic * (1.0 - lambda_c)
+
+    if chronic <= 0:
+        return dict(NO_ACWR, acute=round(acute, 1), chronic=0.0)
+
+    acwr = round(acute / chronic, 2)
+    if acwr > 1.50:
+        status = "danger"
+    elif acwr > 1.30:
+        status = "overload"
+    elif acwr >= 0.80:
+        status = "optimal"
+    else:
+        status = "undertraining"
+
+    return {"acute": round(acute, 1), "chronic": round(chronic, 1), "acwr": acwr, "status": status}
+
+
+def compute_aerobic_decoupling(laps: list[dict]) -> tuple[float | None, float | None]:
+    """Calcula el Desacoplamiento Aeróbico (Pa:HR / Pw:HR) y Factor de Eficiencia (EF).
+
+    Compara el Factor de Eficiencia (Velocidad / FC o Potencia / FC) entre la primera
+    y la segunda mitad de la sesión (Friel, 2018).
+    """
+    if not laps or len(laps) < 2:
+        return None, None
+
+    valid_laps = []
+    for l in laps:
+        spd = l.get("enhanced_avg_speed") or (
+            (l.get("total_distance") / l.get("total_timer_time"))
+            if (l.get("total_distance") and l.get("total_timer_time")) else None
+        )
+        pwr = l.get("avg_power")
+        hr = l.get("avg_heart_rate")
+        dur = l.get("total_timer_time") or l.get("total_elapsed_time") or 1.0
+        output = pwr if pwr else (spd * 1000.0 if spd else None)
+        if output and hr and hr > 40:
+            valid_laps.append({"output": output, "hr": hr, "dur": dur})
+
+    if len(valid_laps) < 2:
+        return None, None
+
+    mid = len(valid_laps) // 2
+    laps_1 = valid_laps[:mid]
+    laps_2 = valid_laps[mid:]
+
+    def calc_ef(lap_subset):
+        tot_dur = sum(l["dur"] for l in lap_subset)
+        if not tot_dur:
+            return None
+        weighted_out = sum(l["output"] * l["dur"] for l in lap_subset) / tot_dur
+        weighted_hr = sum(l["hr"] * l["dur"] for l in lap_subset) / tot_dur
+        return weighted_out / weighted_hr if weighted_hr > 0 else None
+
+    ef1 = calc_ef(laps_1)
+    ef2 = calc_ef(laps_2)
+
+    if not ef1 or not ef2 or ef1 <= 0:
+        return (round(ef1, 2) if ef1 else None), None
+
+    decoupling_pct = round(((ef1 - ef2) / ef1) * 100.0, 1)
+    return round(ef1, 2), decoupling_pct
 
 
 # ---------------------------------------------------------------------------
@@ -493,6 +745,55 @@ def query_activities(conn: sqlite3.Connection, start: date, end: date, tz_min: i
     return result
 
 
+def query_acwr(conn: sqlite3.Connection, end: date) -> dict:
+    """Calcula ACWR a partir de la tabla training_load (nativa o calculada EWMA)."""
+    cur = conn.cursor()
+    try:
+        cur.execute("""
+            SELECT daily_training_load_acute, daily_training_load_chronic, daily_acute_chronic_workload_ratio
+            FROM training_load
+            WHERE date <= ? AND daily_acute_chronic_workload_ratio IS NOT NULL
+            ORDER BY date DESC LIMIT 1
+        """, (end.isoformat(),))
+        row = cur.fetchone()
+        if row and row[2] is not None:
+            acwr_val = round(float(row[2]), 2)
+            status = "danger" if acwr_val > 1.5 else ("overload" if acwr_val > 1.3 else ("optimal" if acwr_val >= 0.8 else "undertraining"))
+            return {
+                "acute": round(float(row[0]), 1) if row[0] is not None else None,
+                "chronic": round(float(row[1]), 1) if row[1] is not None else None,
+                "acwr": acwr_val,
+                "status": status,
+            }
+    except sqlite3.Error:
+        pass
+
+    start_hist = end - timedelta(days=60)
+    try:
+        cur.execute("""
+            SELECT date, total_intensity_minutes FROM training_load
+            WHERE date >= ? AND date <= ? ORDER BY date
+        """, (start_hist.isoformat(), end.isoformat()))
+        history = {str(r[0]): r[1] for r in cur.fetchall()}
+    except sqlite3.Error:
+        history = {}
+
+    if not history:
+        return dict(NO_ACWR)
+
+    # El histórico empieza donde hay dato, no 60 días atrás: rellenar con carga 0
+    # los días previos a la primera sincronización hunde la carga crónica y
+    # dispara falsos "pico de carga agudo" a todo el que lleve poco con el reloj.
+    # Dentro del tramo con datos, un hueco sí es un día de descanso (carga 0).
+    first = date.fromisoformat(min(history))
+    if (end - first).days + 1 < ACWR_MIN_DAYS:
+        return dict(NO_ACWR)
+
+    days_seq = [first + timedelta(days=i) for i in range((end - first).days + 1)]
+    loads = [float(history.get(d.isoformat(), 0) or 0) for d in days_seq]
+    return compute_acwr_ewma(loads)
+
+
 def query_activity_detail(conn: sqlite3.Connection, start: date, end: date, tz_min: int) -> list:
     """Una fila por sesión con todo lo que Garmin guarda de ella.
 
@@ -510,7 +811,8 @@ def query_activity_detail(conn: sqlite3.Connection, start: date, end: date, tz_m
             a.hr_time_in_zone_4, a.hr_time_in_zone_5,
             a.average_speed, a.max_speed, a.difference_body_battery, a.lap_count,
             r.avg_running_cadence, r.avg_stride_length, r.avg_ground_contact_time,
-            r.avg_vertical_oscillation, r.avg_power, r.elevation_gain, r.vo2_max_value,
+            r.avg_vertical_oscillation, r.avg_vertical_ratio, r.avg_ground_contact_balance,
+            r.avg_power, r.elevation_gain, r.vo2_max_value,
             s.avg_swolf, s.strokes, s.active_lengths, s.pool_length,
             c.avg_biking_cadence, c.avg_power AS cycling_power
         FROM activity a
@@ -662,12 +964,12 @@ def metric_stats(conn: sqlite3.Connection, start: date, end: date, tz_min: int =
     steps_sum, steps_days = cur.fetchone()
     steps = (steps_sum / steps_days) if steps_sum and steps_days else None
 
-    # SpO2 nocturna media del periodo
+    # SpO2 y respiración nocturnas
     cur.execute("""
-        SELECT AVG(average_spo2) FROM sleep
+        SELECT AVG(average_spo2), AVG(average_respiration) FROM sleep
         WHERE calendar_date >= ? AND calendar_date <= ?
     """, (s1, e1))
-    spo2 = cur.fetchone()[0]
+    spo2, resp_avg = cur.fetchone()
 
     # Minutos de intensidad equivalentes, normalizados a semana
     cur.execute("""
@@ -677,15 +979,38 @@ def metric_stats(conn: sqlite3.Connection, start: date, end: date, tz_min: int =
     im_sum, im_days = cur.fetchone()
     intensity_week = (im_sum / im_days * 7) if im_sum is not None and im_days else None
 
-    # Regularidad del sueño y VO2máx (último valor disponible)
+    # Regularidad del sueño (SRI, jetlag social y dispersión horaria)
+    sleep_rows = query_sleep(conn, start, end)
+    sri = compute_sri(sleep_rows)
+    social_jetlag = compute_social_jetlag(sleep_rows)
     bed_sd, wake_sd = regularity_over_period(conn, start, end)
+
+    # Estabilidad autonómica de HRV (CV de lnRMSSD y SWC contra 4 semanas previas)
+    cur_hrvs = [n.hrv for n in sleep_rows if n.hrv]
+    b_start, b_end = baseline_range(start, BASELINE_WEEKS)
+    base_sleep_rows = query_sleep(conn, b_start, b_end)
+    base_hrvs = [n.hrv for n in base_sleep_rows if n.hrv]
+    hrv_stab = compute_hrv_stability(cur_hrvs, base_hrvs)
+
+    # Carga de entrenamiento ACWR con EWMA
+    acwr_info = query_acwr(conn, end)
+
     vo2 = query_vo2max(conn, end)
 
     return {
         "sleep_s": sleep_s, "score": score, "rhr": rhr, "hrv": hrv,
         "stress": stress, "steps": steps, "n_nights": n_nights or 0,
-        "spo2": spo2, "intensity_week": intensity_week,
+        "spo2": spo2, "resp_avg": resp_avg, "intensity_week": intensity_week,
         "bed_sd": bed_sd, "wake_sd": wake_sd,
+        "sri": sri, "social_jetlag": social_jetlag,
+        "hrv_cv": hrv_stab.get("cv"),
+        "hrv_swc_low": hrv_stab.get("swc_low"),
+        "hrv_swc_high": hrv_stab.get("swc_high"),
+        "hrv_status_stab": hrv_stab.get("status"),
+        "acwr": acwr_info.get("acwr"),
+        "acute_load": acwr_info.get("acute"),
+        "chronic_load": acwr_info.get("chronic"),
+        "acwr_status": acwr_info.get("status"),
         "vo2max": vo2[0] if vo2 else None,
     }
 
@@ -714,16 +1039,16 @@ def iso_weeks_in_range(start: date, end: date) -> list:
     return [(key[1], ws, we) for key, (ws, we) in sorted(spans.items(), key=lambda kv: kv[1][0])]
 
 
-def compute_flags(sleep_rows: list, cur_stats: dict, base_stats: dict) -> list[str]:
+def compute_flags(sleep_rows: list, cur_stats: dict, base_stats: dict, act_detail: list | None = None) -> list[str]:
     """Reglas simples sobre los datos para resaltar lo que merece atención.
 
     sleep_rows: lista de SleepNight del periodo, ordenadas por fecha.
     """
     flags: list[str] = []
-    have_base = base_stats["n_nights"] >= 5
+    have_base = base_stats.get("n_nights", 0) >= 5
 
-    # FC reposo elevada varios días seguidos respecto a la media (umbral +5 bpm)
-    if have_base and base_stats["rhr"]:
+    # 1. FC reposo elevada varios días seguidos respecto a la media (umbral +5 bpm)
+    if have_base and base_stats.get("rhr"):
         thr = base_stats["rhr"] + 5
         run = best = 0
         for row in sleep_rows:
@@ -738,39 +1063,73 @@ def compute_flags(sleep_rows: list, cur_stats: dict, base_stats: dict) -> list[s
                 f"({round(base_stats['rhr'])} bpm) — posible fatiga, estrés o estar incubando algo."
             )
 
-    # HRV nocturno desviado de la media (±10%)
-    if have_base and base_stats["hrv"] and cur_stats["hrv"]:
+    # 2. HRV nocturno desviado de la media o bajo la banda SWC
+    if have_base and base_stats.get("hrv") and cur_stats.get("hrv"):
         ratio = cur_stats["hrv"] / base_stats["hrv"]
-        if ratio <= 0.90:
+        if ratio <= 0.90 or (cur_stats.get("hrv_swc_low") and cur_stats["hrv"] < cur_stats["hrv_swc_low"]):
+            swc_str = f" (fuera de tu banda normal {round(cur_stats['hrv_swc_low'])}–{round(cur_stats['hrv_swc_high'])} ms)" if cur_stats.get("hrv_swc_low") else ""
             flags.append(
-                f"⚠️ HRV nocturno un {round((1 - ratio) * 100)}% por debajo de tu media "
+                f"⚠️ HRV nocturno un {round((1 - ratio) * 100)}% por debajo de tu media{swc_str} "
                 "— señal de carga/estrés; prioriza descanso."
             )
         elif ratio >= 1.10:
             flags.append("✅ HRV nocturno por encima de tu media — buena recuperación.")
 
-    # Noches cortas
+    # 3. Estabilidad de HRV (CV elevado -> inestabilidad autonómica)
+    hrv_cv = cur_stats.get("hrv_cv")
+    if hrv_cv is not None and hrv_cv > 10.5:
+        flags.append(
+            f"⚠️ Inestabilidad autonómica (CV de HRV {hrv_cv:.1f}%) — oscilaciones nocturnas "
+            "elevadas asociadas a fatiga acumulada."
+        )
+
+    # 4. Noches cortas
     short = sum(1 for r in sleep_rows if r.sleep_s and r.sleep_s < 6 * 3600)
     if short >= 2:
         flags.append(f"⚠️ {short} noches por debajo de 6 h de sueño.")
 
-    # Horario de sueño irregular (SD de la hora de acostarse > 60 min)
+    # 5. Regularidad del sueño (SRI y dispersión de horarios)
+    sri = cur_stats.get("sri")
     bed_sd = cur_stats.get("bed_sd")
-    if bed_sd is not None and bed_sd > 60:
+    sjl = cur_stats.get("social_jetlag")
+    if sri is not None and sri < 68:
+        sjl_str = f", jetlag social {sjl} min" if sjl else ""
+        flags.append(
+            f"⚠️ Regularidad de sueño baja (SRI {sri}/100{sjl_str}): horarios variables que desincronizan el "
+            "ritmo circadiano — la regularidad influye en la longevidad tanto como la duración."
+        )
+    elif bed_sd is not None and bed_sd > 60:
         flags.append(
             f"⚠️ Horario de sueño irregular: la hora de acostarte varía ±{round(bed_sd)} min "
             "esta semana — la regularidad pesa tanto como la duración."
         )
 
-    # Estrés medio elevado respecto a la media (+8)
-    if have_base and base_stats["stress"] and cur_stats["stress"]:
+    # 6. Estrés medio elevado respecto a la media (+8)
+    if have_base and base_stats.get("stress") and cur_stats.get("stress"):
         if cur_stats["stress"] >= base_stats["stress"] + 8:
             flags.append(
                 f"⚠️ Estrés medio elevado ({round(cur_stats['stress'])}) "
                 f"frente a tu media ({round(base_stats['stress'])})."
             )
 
-    # Minutos de intensidad frente a la guía OMS (150–300 equivalentes/semana)
+    # 7. Carga de entrenamiento (ACWR con EWMA)
+    acwr = cur_stats.get("acwr")
+    if acwr is not None:
+        if acwr > 1.50:
+            flags.append(
+                f"⚠️ Pico de carga agudo (ACWR {acwr:.2f}): incremento >50% respecto a tu "
+                "preparación crónica — riesgo elevado de sobrecarga lesiva."
+            )
+        elif acwr > 1.30:
+            flags.append(
+                f"ℹ️ Sobrecarga progresiva alta (ACWR {acwr:.2f}): carga exigente en el límite superior seguro."
+            )
+        elif 0.80 <= acwr <= 1.30 and (cur_stats.get("intensity_week") or 0) >= INTENSITY_TARGET_MIN:
+            flags.append(
+                f"✅ Carga de entrenamiento en rango óptimo (ACWR {acwr:.2f}) — estímulo progresivo y seguro."
+            )
+
+    # 8. Minutos de intensidad frente a la guía OMS (150–300 equivalentes/semana)
     im = cur_stats.get("intensity_week")
     if im is not None:
         if im < INTENSITY_TARGET_MIN:
@@ -784,7 +1143,7 @@ def compute_flags(sleep_rows: list, cur_stats: dict, base_stats: dict) -> list[s
                 f"(objetivo {INTENSITY_TARGET_MIN}–{INTENSITY_TARGET_MAX})."
             )
 
-    # SpO2 nocturna MEDIA baja varias noches (cribado, no diagnóstico).
+    # 9. SpO2 nocturna MEDIA baja varias noches (cribado, no diagnóstico).
     # Usamos la media, no el mínimo: caídas puntuales a 85-89% son normales en
     # gente sana; lo relevante es una saturación media sostenidamente baja.
     low_spo2 = sum(1 for n in sleep_rows if n.spo2_avg is not None and n.spo2_avg < 92)
@@ -794,7 +1153,37 @@ def compute_flags(sleep_rows: list, cur_stats: dict, base_stats: dict) -> list[s
             "(p. ej. apnea del sueño); no es un diagnóstico, coméntalo con un profesional."
         )
 
-    # VO2máx ausente: recordatorio de cómo activarlo
+    # 10. Desviación de frecuencia respiratoria nocturna (alerta precoz de infección / estrés)
+    if have_base and base_stats.get("resp_avg") and cur_stats.get("resp_avg"):
+        if cur_stats["resp_avg"] >= base_stats["resp_avg"] + 1.0:
+            delta = cur_stats["resp_avg"] - base_stats["resp_avg"]
+            flags.append(
+                f"⚠️ Frecuencia respiratoria nocturna elevada (+{delta:.1f} resp/min "
+                f"sobre tu media de {round(base_stats['resp_avg'], 1)}) — posible señal de infección, estrés o inflamación."
+            )
+
+    # 11. Desacoplamiento aeróbico y asimetría biomecánica en sesiones
+    if act_detail:
+        for a in act_detail:
+            dec = a.get("decoupling")
+            if dec is not None and dec > 7.5 and (a.get("duration") or 0) >= 1500:
+                name = ACTIVITY_LABELS.get(a.get("activity_type_key", ""), a.get("activity_type_key", "sesión"))
+                flags.append(
+                    f"⚠️ Desacoplamiento aeróbico elevado (+{dec:.1f}%) en {name} ({a.get('day', '')}) — "
+                    "deriva cardíaca atribuible a fatiga aeróbica, calor o deshidratación."
+                )
+                break
+        for a in act_detail:
+            bal = a.get("avg_ground_contact_balance")
+            if bal is not None and abs(bal - 50.0) >= 1.6:
+                side = "izquierda" if bal > 50.0 else "derecha"
+                flags.append(
+                    f"⚠️ Asimetría de apoyo en carrera ({bal:.1f}% I / {100-bal:.1f}% D) en {a.get('day', '')} — "
+                    f"vigila posibles sobrecargas en pierna {side}."
+                )
+                break
+
+    # 12. VO2máx ausente: recordatorio de cómo activarlo
     if cur_stats.get("vo2max") is None:
         flags.append(
             "ℹ️ Sin VO2máx (el predictor de longevidad más potente): el FR165 lo estima con "
@@ -803,8 +1192,8 @@ def compute_flags(sleep_rows: list, cur_stats: dict, base_stats: dict) -> list[s
         )
 
     # Señal positiva global (solo si no hay avisos)
-    if (cur_stats["sleep_s"] and cur_stats["sleep_s"] >= 7.5 * 3600
-            and cur_stats["score"] and cur_stats["score"] >= 85
+    if (cur_stats.get("sleep_s") and cur_stats["sleep_s"] >= 7.5 * 3600
+            and cur_stats.get("score") and cur_stats["score"] >= 85
             and not any(f.startswith("⚠️") for f in flags)):
         flags.append("✅ Buena semana de sueño y recuperación.")
 
@@ -852,10 +1241,12 @@ def _sum_reg(v):
 # en reposo y bueno en VO2máx. None = ni bueno ni malo por sí solo.
 SUMMARY_SPECS = [
     ("Sueño",                   "sleep_s",        _sum_dur,                       "",     True,  "up"),
-    ("Regularidad (acostarse)", "bed_sd",         _sum_reg,                       " min", False, "down"),
+    ("Regularidad (SRI)",       "sri",            lambda v: _sum_num(v, "/100"),  "/100", False, "up"),
     ("Score sueño",             "score",          _sum_num,                       "",     False, "up"),
     ("FC reposo",               "rhr",            lambda v: _sum_num(v, " bpm"),  " bpm", False, "down"),
     ("HRV nocturno",            "hrv",            lambda v: _sum_num(v, " ms"),   " ms",  False, "up"),
+    ("Estabilidad HRV",         "hrv_cv",         lambda v: f"{v:.1f}%" if v is not None else "–", "%", False, "down"),
+    ("Carga (ACWR)",            "acwr",           lambda v: f"{v:.2f}" if v is not None else "–",  "", False, None),
     ("VO2máx",                  "vo2max",         _sum_num,                       "",     False, "up"),
     ("Estrés medio",            "stress",         _sum_num,                       "",     False, "down"),
     ("Pasos/día",               "steps",          _sum_steps,                     "",     False, "up"),
@@ -863,19 +1254,124 @@ SUMMARY_SPECS = [
 ]
 
 
+# Anillos del resumen. Garmin no da una nota de recuperación en la BD, así que
+# se estima aquí desde cuánto se desvían HRV y FC en reposo de TU media, con la
+# HRV pesando más (es la señal autonómica que antes se mueve). Los coeficientes
+# son una calibración, no una ley: RECOVERY_CENTER es la nota de una semana
+# idéntica a tu media, y las ganancias, cuántos puntos cuesta desviarse.
+RECOVERY_CENTER = 65
+RECOVERY_HRV_GAIN = 250   # puntos por cada 100 % de desviación de la HRV
+RECOVERY_RHR_GAIN = 8     # puntos por cada bpm sobre tu media
+SLEEP_TARGET_S = 8 * 3600
+
+
+def _clamp100(v: float) -> float:
+    return min(100.0, max(0.0, v))
+
+
+def recovery_score(cur_stats: dict, base_stats: dict) -> float | None:
+    """Nota 0–100 de recuperación. None si no hay histórico con el que comparar.
+
+    Cada componente se acota a 0–100 antes de mezclarse: una HRV disparada no
+    debe compensar una FC en reposo por las nubes.
+    """
+    if base_stats.get("n_nights", 0) < 5:
+        return None
+    parts = []
+    if cur_stats.get("hrv") and base_stats.get("hrv"):
+        dev = cur_stats["hrv"] / base_stats["hrv"] - 1
+        parts.append((0.6, _clamp100(RECOVERY_CENTER + dev * RECOVERY_HRV_GAIN)))
+    if cur_stats.get("rhr") and base_stats.get("rhr"):
+        dev = cur_stats["rhr"] - base_stats["rhr"]
+        parts.append((0.4, _clamp100(RECOVERY_CENTER - dev * RECOVERY_RHR_GAIN)))
+    if not parts:
+        return None
+    return sum(w * v for w, v in parts) / sum(w for w, _ in parts)
+
+
+def _band(value, good, warn) -> str:
+    """Estado por umbrales: bueno / a vigilar / malo. Sin dato, no se moja."""
+    if value is None:
+        return ""
+    return "good" if value >= good else "warn" if value >= warn else "bad"
+
+
+def summary_rings(cur_stats: dict, base_stats: dict) -> list[tuple]:
+    """(etiqueta, fracción 0–1, valor, detalle, estado) de fuera a dentro.
+
+    Tres anillos concéntricos con lo que resume una semana: cuánto te has
+    movido, cuánto has dormido y cómo has recuperado. Cada fracción es
+    "lo logrado / el objetivo", así que el anillo lleno significa lo mismo
+    en los tres aunque las unidades no tengan nada que ver.
+    """
+    im = cur_stats.get("intensity_week")
+    sleep_s = cur_stats.get("sleep_s")
+    rec = recovery_score(cur_stats, base_stats)
+
+    sleep_detail = f"Media por noche · objetivo {SLEEP_TARGET_S // 3600} h"
+
+    if rec is None:
+        rec_detail = "Sin histórico suficiente para comparar HRV y FC en reposo"
+    else:
+        rec_detail = ("HRV nocturno y FC en reposo frente a tu media de las "
+                      "semanas anteriores")
+
+    return [
+        ("Actividad",
+         (im / INTENSITY_TARGET_MAX) if im is not None else None,
+         f"{round(im)} min" if im is not None else "–",
+         f"Minutos de intensidad · objetivo OMS "
+         f"{INTENSITY_TARGET_MIN}–{INTENSITY_TARGET_MAX} por semana",
+         _band(im, INTENSITY_TARGET_MIN, INTENSITY_TARGET_MIN / 2)),
+        ("Sueño",
+         (sleep_s / SLEEP_TARGET_S) if sleep_s else None,
+         _sum_dur(sleep_s),
+         sleep_detail,
+         _band(sleep_s, 7 * 3600, 6 * 3600)),
+        ("Recuperación",
+         (rec / 100) if rec is not None else None,
+         f"{round(rec)}" if rec is not None else "–",
+         rec_detail,
+         _band(rec, 67, 34)),
+    ]
+
+
+# Métricas que ya son el valor de un anillo: en las tarjetas serían la misma
+# cifra por segunda vez.
+RING_KEYS = {"sleep_s", "intensity_week"}
+
+
 def summary_tiles(cur_stats: dict, base_stats: dict) -> list[tuple]:
     """(etiqueta, valor, tendencia, estado) por métrica, para la cabecera del HTML.
 
     El estado es "good"/"bad"/"" según si la métrica se ha movido hacia su lado
-    bueno; sin histórico con el que comparar, no se moja.
+    bueno; sin histórico con el que comparar, no se moja. Las métricas que se
+    leen contra un rango fijo (ACWR, SRI, CV de HRV) sí se pronuncian solas.
     """
-    comparable = base_stats["n_nights"] >= 5
+    comparable = base_stats.get("n_nights", 0) >= 5
     tiles = []
     for label, key, fmt, unit, as_dur, good in SUMMARY_SPECS:
-        cur, base = cur_stats[key], base_stats[key]
-        trend = fmt_trend(cur, base, unit, as_duration=as_dur) if comparable else ""
+        if key in RING_KEYS:
+            continue
+        cur, base = cur_stats.get(key), base_stats.get(key)
+        trend = fmt_trend(cur, base, unit, as_duration=as_dur) if (comparable and base is not None) else ""
         state = ""
-        if good and comparable and cur is not None and base is not None and cur != base:
+        if key == "acwr" and cur is not None:
+            if 0.80 <= cur <= 1.30:
+                state = "good"
+            elif cur > 1.40:
+                state = "bad"
+        elif key == "sri" and cur is not None:
+            if cur >= 80:
+                state = "good"
+            elif cur < 68:
+                state = "bad"
+        elif key == "hrv_cv" and cur is not None:
+            if cur <= 6.5:
+                state = "good"
+            elif cur > 10.5:
+                state = "bad"
+        elif good and comparable and cur is not None and base is not None and cur != base:
             rose = cur > base
             state = "good" if rose == (good == "up") else "bad"
         tiles.append((label, fmt(cur), trend, state))
@@ -903,6 +1399,21 @@ def weekly_breakdown(weekly: list, base: dict) -> list[str]:
     legend = " · ".join(f"{w['wk_label']}: {w['range_label']}" for w in weekly)
     out.append(f"\n_{legend}_\n")
     return out
+
+
+def title_range(start: date, end: date) -> str:
+    """Titular del informe: el rango de días, sin repetir lo que no cambia.
+
+    El número de semana ISO es jerga y el resto de la portada ya dice de qué es
+    el informe, así que el titular se queda con lo único que lo identifica.
+    """
+    if (start.year, start.month) == (end.year, end.month):
+        return f"{start.day}–{end.day} {MONTHS_LONG[end.month]} {end.year}"
+    if start.year == end.year:
+        return (f"{start.day} {MONTHS_LONG[start.month]} – "
+                f"{end.day} {MONTHS_LONG[end.month]} {end.year}")
+    return (f"{start.day} {MONTHS_LONG[start.month]} {start.year} – "
+            f"{end.day} {MONTHS_LONG[end.month]} {end.year}")
 
 
 def build_summary(cur_stats: dict, base_stats: dict, flags: list[str], weeks: int,
@@ -979,15 +1490,8 @@ def generate_md(
         for n in sleep_rows
     }
 
-    # Título dinámico
-    if not multi_week:
-        week_num = start.isocalendar()[1]
-        titulo = f"semana {start.year}-W{week_num:02d} ({start.day} {MONTHS_ES[start.month]} – {end.day} {MONTHS_ES[end.month]} {end.year})"
-    else:
-        titulo = f"{start.day} {MONTHS_ES[start.month]} – {end.day} {MONTHS_ES[end.month]} {end.year}"
-
     lines = [
-        f"# Garmin log — {titulo}\n\n",
+        f"# {title_range(start, end)}\n\n",
         f"_Generado el {(generated_on or date.today()).isoformat()} · Garmin Forerunner 165_\n\n",
     ]
     if notice:
@@ -1051,9 +1555,13 @@ def generate_md(
     if wake_sd is not None:
         reg_parts.append(f"despertar ±{round(wake_sd)} min")
     reg_str = f" · Regularidad: {', '.join(reg_parts)}" if reg_parts else ""
+    sri_val = cur_stats.get("sri")
+    sri_str = f" · SRI: {sri_val}/100" if sri_val is not None else ""
+    sjl_val = cur_stats.get("social_jetlag")
+    sjl_str = f" · Jetlag social: {sjl_val} min" if sjl_val is not None else ""
     awake_str = f" · Desvelo medio: {avg_awake} min" if avg_awake is not None else ""
     lines.append(
-        f"\n**Media:** {avg_sleep} · Score medio: {avg_score}{reg_str}{awake_str}\n\n"
+        f"\n**Media:** {avg_sleep} · Score medio: {avg_score}{sri_str}{sjl_str}{reg_str}{awake_str}\n\n"
     )
 
     # Contexto de la noche: lo que Garmin mide pero no cabe en la tabla.
@@ -1084,8 +1592,8 @@ def generate_md(
         lines.append(" · ".join(ctx) + "\n\n")
 
     lines.append(
-        "_La regularidad (cuánto varían tus horarios) influye en la salud tanto como las "
-        "horas dormidas: cuanto menor la dispersión, mejor._\n\n"
+        "_La regularidad circadiana (SRI) y la dispersión horaria influyen en la salud y la "
+        "recuperación tanto como las horas dormidas._\n\n"
     )
 
     # --- FC reposo + HRV ---
@@ -1119,7 +1627,12 @@ def generate_md(
     avg_hrv = f"{round(total_hrv / hrv_count)} ms" if hrv_count else "–"
     status_raw = next((n.hrv_status for n in reversed(present) if n.hrv_status), None)
     status_str = f" · Estado HRV: {HRV_STATUS_ES.get(status_raw, status_raw.lower())}" if status_raw else ""
-    lines.append(f"\n**Media:** {avg_hr} · HRV medio: {avg_hrv}{status_str}\n\n")
+    swc_lo = cur_stats.get("hrv_swc_low")
+    swc_hi = cur_stats.get("hrv_swc_high")
+    swc_str = f" (banda normal {round(swc_lo)}–{round(swc_hi)} ms)" if (swc_lo and swc_hi) else ""
+    cv_val = cur_stats.get("hrv_cv")
+    cv_str = f" · CV: {cv_val:.1f}%" if cv_val is not None else ""
+    lines.append(f"\n**Media:** {avg_hr} · HRV medio: {avg_hrv}{swc_str}{cv_str}{status_str}\n\n")
 
     # --- Respiración y SpO2 nocturnos ---
     lines += [
@@ -1389,7 +1902,14 @@ def build_report(conn: sqlite3.Connection, start: date, end: date,
         b_start, b_end = baseline_range(start, BASELINE_WEEKS)
         base_stats = metric_stats(conn, b_start, b_end, tz_min)
 
-    flags = compute_flags(sleep_rows, cur_stats, base_stats)
+    for a in act_detail:
+        laps = laps_map.get(a["activity_id"])
+        if laps and len(laps) >= 2:
+            ef, dec = compute_aerobic_decoupling(laps)
+            a["ef"] = ef
+            a["decoupling"] = dec
+
+    flags = compute_flags(sleep_rows, cur_stats, base_stats, act_detail)
 
     if not sleep_rows and not stress_map and not bb_map:
         print("[AVISO] No hay datos para ese rango de fechas. ¿Se completó la sincronización?")
@@ -1401,8 +1921,18 @@ def build_report(conn: sqlite3.Connection, start: date, end: date,
         generated_on, notice,
     )
 
+    # Las medias del periodo previo son la cruz del mapa de recuperación: sin
+    # ellas la gráfica no tiene contra qué comparar y no se dibuja.
+    baselines = ({"rhr": base_stats["rhr"], "hrv": base_stats["hrv"],
+                  "swc_low": cur_stats.get("hrv_swc_low"), "swc_high": cur_stats.get("hrv_swc_high")}
+                 if base_stats.get("n_nights", 0) >= 5 else None)
     return md, render_html.render(md, sleep_rows, stress_map, bb_map, steps_map,
-                                  start, end, tiles=summary_tiles(cur_stats, base_stats))
+                                  start, end, tiles=summary_tiles(cur_stats, base_stats),
+                                  rings=summary_rings(cur_stats, base_stats),
+                                  baselines=baselines,
+                                  intensity_map=intensity_map,
+                                  vo2max=vo2max,
+                                  race_pred=race_pred)
 
 
 # ---------------------------------------------------------------------------
