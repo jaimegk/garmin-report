@@ -181,26 +181,28 @@ def test_compute_flags():
 
     # FC reposo ≥ media+5 tres días seguidos → aviso
     rows = [_night(rhr=52)] * 3 + [_night()] * 4
-    flags = compute_flags(rows, cur, base)
-    assert any("FC reposo elevada 3 días" in f for f in flags), flags
+    flags_es = compute_flags(rows, cur, base, lang="es")
+    assert any("FC reposo elevada 3 días" in f for f in flags_es), flags_es
+    flags_en = compute_flags(rows, cur, base, lang="en")
+    assert any("Resting HR elevated for 3 consecutive days" in f for f in flags_en), flags_en
 
     # Semana normal → sin avisos ⚠️
-    flags = compute_flags([_night()] * 7, cur, base)
+    flags = compute_flags([_night()] * 7, cur, base, lang="es")
     assert not any(f.startswith("⚠️") for f in flags), flags
 
     # HRV 15% por debajo de la media → aviso
     low = dict(cur, hrv=51)
-    flags = compute_flags([_night()] * 7, low, base)
+    flags = compute_flags([_night()] * 7, low, base, lang="es")
     assert any("HRV nocturno" in f and f.startswith("⚠️") for f in flags), flags
 
     # Frecuencia respiratoria nocturna desviada ≥ +1.0 resp/min → aviso
     resp_drift = dict(cur, resp_avg=14.8)
-    flags = compute_flags([_night()] * 7, resp_drift, base)
+    flags = compute_flags([_night()] * 7, resp_drift, base, lang="es")
     assert any("Frecuencia respiratoria nocturna elevada" in f for f in flags), flags
 
     # ACWR pico agudo > 1.50 → aviso
     danger_acwr = dict(cur, acwr=1.58)
-    flags = compute_flags([_night()] * 7, danger_acwr, base)
+    flags = compute_flags([_night()] * 7, danger_acwr, base, lang="es")
     assert any("Pico de carga agudo" in f for f in flags), flags
 
     # Desacoplamiento aeróbico elevado y asimetría biomecánica en sesiones
@@ -208,7 +210,7 @@ def test_compute_flags():
         {"activity_type_key": "running", "duration": 3600, "decoupling": 8.5, "day": "2026-06-20",
          "avg_ground_contact_balance": 52.0}
     ]
-    flags = compute_flags([_night()] * 7, cur, base, act_detail=acts)
+    flags = compute_flags([_night()] * 7, cur, base, act_detail=acts, lang="es")
     assert any("Desacoplamiento aeróbico" in f for f in flags), flags
     assert any("Asimetría de apoyo" in f for f in flags), flags
 
@@ -314,22 +316,33 @@ def test_demo_pipeline_end_to_end():
         with patch("sys.stdout", new_callable=io.StringIO):
             start, end = demo_data.build(db)
             conn = sqlite3.connect(db)
-            md, html = build_report(conn, start, end, demo_data.GENERATED_ON)
+            md, html = build_report(conn, start, end, demo_data.GENERATED_ON, lang="en")
+            md_es, html_es = build_report(conn, start, end, demo_data.GENERATED_ON, lang="es")
             conn.close()
 
+    # Secciones en inglés (por defecto)
+    for section in ("## Summary", "### Signals", "### Metrics", "## Sleep",
+                    "## Resting HR + Overnight HRV", "## Overnight Respiration & SpO2",
+                    "## Stress & Body Battery", "## Activity",
+                    "### Session Breakdown", "### Laps / Splits", "## Fitness"):
+        assert section in md, f"falta la sección en inglés {section!r}"
+
+    # Secciones en español
     for section in ("## Resumen", "### Señales", "### Métricas", "## Sueño",
                     "## FC reposo + HRV nocturno", "## Respiración y SpO2 nocturnos",
                     "## Estrés y Body Battery", "## Actividad",
                     "### Detalle de sesiones", "### Vueltas", "## Forma física"):
-        assert section in md, f"falta la sección {section!r}"
+        assert section in md_es, f"falta la sección en español {section!r}"
 
     # La fecha de generación es la del dataset, no la de hoy: si no, el ejemplo
     # publicado cambiaría en cada ejecución.
-    assert f"_Generado el {demo_data.GENERATED_ON.isoformat()}" in md
+    assert f"_Generated on {demo_data.GENERATED_ON.isoformat()}" in md
+    assert f"_Generado el {demo_data.GENERATED_ON.isoformat()}" in md_es
 
     # Los datos de la última semana están hechos para disparar señales: si el
     # informe sale limpio, o los umbrales o el generador se han roto.
     assert md.count("⚠️") >= 3, md[:600]
+    assert md_es.count("⚠️") >= 3, md_es[:600]
 
     # La FC de cada vuelta tiene que ser coherente: mín ≤ media ≤ máx.
     for lo, mid, hi in re.findall(r"\| (\d+)/(\d+)/(\d+) \|", md):
@@ -342,13 +355,18 @@ def test_demo_pipeline_end_to_end():
     # El logo va incrustado —SVG en línea, favicon en base64—, no enlazado: si
     # assets/ desaparece el informe se genera igual y nadie se entera.
     assert '<svg class="logo"' in html and 'href="data:image/png;base64,' in html
+    assert "Switch to Spanish" in html
+    assert "Cambiar a inglés" in html_es
 
 
 def test_title_range_no_repite_lo_que_no_cambia():
     tr = generate_report.title_range
-    assert tr(date(2026, 6, 15), date(2026, 6, 21)) == "15–21 junio 2026"
-    assert tr(date(2026, 5, 25), date(2026, 6, 21)) == "25 mayo – 21 junio 2026"
-    assert tr(date(2025, 12, 29), date(2026, 1, 4)) == "29 diciembre 2025 – 4 enero 2026"
+    assert tr(date(2026, 6, 15), date(2026, 6, 21), lang="es") == "15–21 junio 2026"
+    assert tr(date(2026, 5, 25), date(2026, 6, 21), lang="es") == "25 mayo – 21 junio 2026"
+    assert tr(date(2025, 12, 29), date(2026, 1, 4), lang="es") == "29 diciembre 2025 – 4 enero 2026"
+    assert tr(date(2026, 6, 15), date(2026, 6, 21), lang="en") == "15–21 June 2026"
+    assert tr(date(2026, 5, 25), date(2026, 6, 21), lang="en") == "25 May – 21 June 2026"
+    assert tr(date(2025, 12, 29), date(2026, 1, 4), lang="en") == "29 December 2025 – 4 January 2026"
 
 
 def test_summary_tiles_conocen_la_direccion_buena():
@@ -358,22 +376,29 @@ def test_summary_tiles_conocen_la_direccion_buena():
            "hrv": 60, "stress": 30, "steps": 9000, "intensity_week": 200, "n_nights": 7,
            "acwr": 1.15, "sri": 85, "hrv_cv": 4.5}
     base = dict(cur, rhr=46, vo2max=47, n_nights=7)
-    state = {label: st for label, _v, _t, st in summary_tiles(cur, base)}
+    state = {label: st for label, _v, _t, st in summary_tiles(cur, base, lang="es")}
     assert state["FC reposo"] == "bad"
     assert state["VO2máx"] == "good"
     assert state["Carga (ACWR)"] == "good"
     assert state["Regularidad (SRI)"] == "good"
     assert state["Estabilidad HRV"] == "good"
     assert state["Estrés medio"] == ""             # sin cambio, no se moja
-    # Sueño y minutos de intensidad son el valor de un anillo: no se repiten
-    # como tarjeta.
     assert "Sueño" not in state and "Min. intensidad/sem" not in state
     assert "Score sueño" in state
+
+    state_en = {label: st for label, _v, _t, st in summary_tiles(cur, base, lang="en")}
+    assert state_en["Resting HR"] == "bad"
+    assert state_en["VO2max"] == "good"
+    assert state_en["Training Load (ACWR)"] == "good"
+    assert state_en["Regularity (SRI)"] == "good"
+    assert state_en["HRV Stability"] == "good"
+    assert state_en["Avg. Stress"] == ""
+    assert "Sleep Score" in state_en
 
     # Sin histórico con el que comparar, las de comparación directa no se mojan
     sin_base = dict(base, n_nights=0)
     assert all(st == "" or label in ("Carga (ACWR)", "Regularidad (SRI)", "Estabilidad HRV")
-               for label, _v, tr, st in summary_tiles(cur, sin_base))
+               for label, _v, tr, st in summary_tiles(cur, sin_base, lang="es"))
 
 
 def test_recovery_score_pondera_hrv_y_fc():
@@ -389,19 +414,28 @@ def test_recovery_score_pondera_hrv_y_fc():
     assert recovery_score(dict(base), sin_base) is None
     label, frac, value, _detail, state = summary_rings(
         {"hrv": 60, "rhr": 48, "sleep_s": 7 * 3600, "score": 80, "steps": 9000,
-         "intensity_week": 200, "n_nights": 7}, sin_base)[2]
+         "intensity_week": 200, "n_nights": 7}, sin_base, lang="es")[2]
     assert (label, frac, value, state) == ("Recuperación", None, "–", "")
+
+    label_en, frac, value, _detail, state = summary_rings(
+        {"hrv": 60, "rhr": 48, "sleep_s": 7 * 3600, "score": 80, "steps": 9000,
+         "intensity_week": 200, "n_nights": 7}, sin_base, lang="en")[2]
+    assert (label_en, frac, value, state) == ("Recovery", None, "–", "")
 
 
 def test_summary_rings_mide_contra_su_objetivo():
     cur = {"hrv": 60, "rhr": 48, "sleep_s": 5 * 3600, "score": 80, "steps": 9000,
             "intensity_week": 300, "n_nights": 7}
     base = dict(cur, n_nights=7)
-    rings = {r[0]: r for r in summary_rings(cur, base)}
+    rings = {r[0]: r for r in summary_rings(cur, base, lang="es")}
     # 300 min de intensidad = objetivo OMS cumplido: anillo lleno y en verde.
     assert rings["Actividad"][1] == 1.0 and rings["Actividad"][4] == "good"
     # 5 h de sueño: cinco octavos de anillo y en rojo.
     assert rings["Sueño"][1] == 0.625 and rings["Sueño"][4] == "bad"
+
+    rings_en = {r[0]: r for r in summary_rings(cur, base, lang="en")}
+    assert rings_en["Activity"][1] == 1.0 and rings_en["Activity"][4] == "good"
+    assert rings_en["Sleep"][1] == 0.625 and rings_en["Sleep"][4] == "bad"
 
 
 # ===========================================================================
@@ -928,68 +962,76 @@ def test_compute_flags_all_branches():
 
     # 1. HRV alto (> 1.10)
     high_hrv = dict(cur, hrv=70)
-    f = compute_flags([_night()] * 7, high_hrv, base)
+    f = compute_flags([_night()] * 7, high_hrv, base, lang="es")
     assert any("HRV nocturno por encima de tu media" in x for x in f)
+    f_en = compute_flags([_night()] * 7, high_hrv, base, lang="en")
+    assert any("Overnight HRV above baseline" in x for x in f_en)
 
     # 2. Inestabilidad autonómica (CV > 10.5)
     high_cv = dict(cur, hrv_cv=12.0)
-    f = compute_flags([_night()] * 7, high_cv, base)
+    f = compute_flags([_night()] * 7, high_cv, base, lang="es")
     assert any("Inestabilidad autonómica" in x for x in f)
+    f_en = compute_flags([_night()] * 7, high_cv, base, lang="en")
+    assert any("Autonomic instability" in x for x in f_en)
 
     # 3. Noches cortas (>= 2 noches < 6h)
     short_nights = [_night(sleep_s=5 * 3600), _night(sleep_s=5.5 * 3600)] + [_night()] * 5
-    f = compute_flags(short_nights, cur, base)
+    f = compute_flags(short_nights, cur, base, lang="es")
     assert any("2 noches por debajo de 6 h" in x for x in f)
+    f_en = compute_flags(short_nights, cur, base, lang="en")
+    assert any("2 nights with under 6 h" in x for x in f_en)
 
     # 4. SRI bajo (< 68) y jetlag social
     low_sri = dict(cur, sri=60, social_jetlag=90)
-    f = compute_flags([_night()] * 7, low_sri, base)
+    f = compute_flags([_night()] * 7, low_sri, base, lang="es")
     assert any("Regularidad de sueño baja" in x and "jetlag social 90 min" in x for x in f)
 
     # 5. SRI normal pero bed_sd > 60
     high_bed_sd = dict(cur, sri=75, bed_sd=75)
-    f = compute_flags([_night()] * 7, high_bed_sd, base)
+    f = compute_flags([_night()] * 7, high_bed_sd, base, lang="es")
     assert any("Horario de sueño irregular" in x for x in f)
 
     # 6. Estrés elevado (+8)
     high_stress = dict(cur, stress=40)
-    f = compute_flags([_night()] * 7, high_stress, base)
+    f = compute_flags([_night()] * 7, high_stress, base, lang="es")
     assert any("Estrés medio elevado" in x for x in f)
 
     # 7. ACWR sobrecarga (1.30 < acwr <= 1.50)
     acwr_over = dict(cur, acwr=1.40)
-    f = compute_flags([_night()] * 7, acwr_over, base)
+    f = compute_flags([_night()] * 7, acwr_over, base, lang="es")
     assert any("Sobrecarga progresiva alta" in x for x in f)
 
     # 8. Actividad por debajo de la recomendación OMS (< 150 min)
     low_im = dict(cur, intensity_week=100)
-    f = compute_flags([_night()] * 7, low_im, base)
+    f = compute_flags([_night()] * 7, low_im, base, lang="es")
     assert any("Actividad por debajo de la recomendación" in x for x in f)
 
     # 9. SpO2 media < 92% en >= 3 noches
     low_spo2_nights = [_night(spo2=90)] * 3 + [_night(spo2=96)] * 4
-    f = compute_flags(low_spo2_nights, cur, base)
+    f = compute_flags(low_spo2_nights, cur, base, lang="es")
     assert any("SpO2 nocturna media por debajo de 92%" in x for x in f)
 
     # 10. Asimetría de apoyo derecha (< 50%)
     act_right = [{"activity_type_key": "running", "duration": 3600, "day": "2026-06-20",
                   "avg_ground_contact_balance": 47.0}]
-    f = compute_flags([_night()] * 7, cur, base, act_detail=act_right)
+    f = compute_flags([_night()] * 7, cur, base, act_detail=act_right, lang="es")
     assert any("pierna derecha" in x for x in f)
 
     # 11. Sin VO2máx
     no_vo2 = dict(cur, vo2max=None)
-    f = compute_flags([_night()] * 7, no_vo2, base)
+    f = compute_flags([_night()] * 7, no_vo2, base, lang="es")
     assert any("Sin VO2máx" in x for x in f)
 
     # 12. Buena semana global de sueño
     good_sleep = dict(cur, sleep_s=8 * 3600, score=90)
-    f = compute_flags([_night()] * 7, good_sleep, base)
+    f = compute_flags([_night()] * 7, good_sleep, base, lang="es")
     assert any("Buena semana de sueño y recuperación" in x for x in f)
 
     # 13. Sin señales destacables (con vo2max presente para evitar flag 12)
-    f_empty = compute_flags([_night()] * 7, {"n_nights": 7, "vo2max": 50}, {"n_nights": 0})
+    f_empty = compute_flags([_night()] * 7, {"n_nights": 7, "vo2max": 50}, {"n_nights": 0}, lang="es")
     assert any("Sin señales destacables" in x for x in f_empty)
+    f_empty_en = compute_flags([_night()] * 7, {"n_nights": 7, "vo2max": 50}, {"n_nights": 0}, lang="en")
+    assert any("No noteworthy flags" in x for x in f_empty_en)
 
 
 def test_fmt_trend_and_summary_helpers():
@@ -1015,13 +1057,21 @@ def test_fmt_trend_and_summary_helpers():
 def test_summary_tiles_all_branches():
     cur = {"acwr": 1.45, "sri": 60, "hrv_cv": 11.0, "rhr": 55, "vo2max": 45, "n_nights": 7}
     base = {"rhr": 45, "vo2max": 50, "n_nights": 7}
-    tiles = summary_tiles(cur, base)
+    tiles = summary_tiles(cur, base, lang="es")
     state_map = {lbl: st for lbl, _v, _tr, st in tiles}
     assert state_map["Carga (ACWR)"] == "bad"
     assert state_map["Regularidad (SRI)"] == "bad"
     assert state_map["Estabilidad HRV"] == "bad"
     assert state_map["FC reposo"] == "bad"
     assert state_map["VO2máx"] == "bad"
+
+    tiles_en = summary_tiles(cur, base, lang="en")
+    state_map_en = {lbl: st for lbl, _v, _tr, st in tiles_en}
+    assert state_map_en["Training Load (ACWR)"] == "bad"
+    assert state_map_en["Regularity (SRI)"] == "bad"
+    assert state_map_en["HRV Stability"] == "bad"
+    assert state_map_en["Resting HR"] == "bad"
+    assert state_map_en["VO2max"] == "bad"
 
 
 def test_weekly_breakdown_and_build_summary():
@@ -1033,36 +1083,51 @@ def test_weekly_breakdown_and_build_summary():
           "stats": dict(w1["stats"], rhr=52)}
     base = w1["stats"]
 
-    table_lines = weekly_breakdown([w1, w2], base)
+    table_lines = weekly_breakdown([w1, w2], base, lang="es")
     assert any("W25" in l and "W26" in l for l in table_lines)
 
     # build_summary con multi-week
-    sum_lines = build_summary(w2["stats"], base, ["⚠️ Señal"], weeks=2, multi_week=True, weekly=[w1, w2])
+    sum_lines = build_summary(w2["stats"], base, ["⚠️ Señal"], weeks=2, multi_week=True, weekly=[w1, w2], lang="es")
     assert any("W25" in l for l in sum_lines)
 
     # build_summary con base insuficiente (< 5 noches)
-    sum_no_base = build_summary(w1["stats"], {"n_nights": 2}, ["ℹ️ Info"], weeks=0)
+    sum_no_base = build_summary(w1["stats"], {"n_nights": 2}, ["ℹ️ Info"], weeks=0, lang="es")
     assert any("Histórico insuficiente" in l for l in sum_no_base)
+
+    sum_no_base_en = build_summary(w1["stats"], {"n_nights": 2}, ["ℹ️ Info"], weeks=0, lang="en")
+    assert any("Insufficient baseline" in l for l in sum_no_base_en)
 
 
 def test_day_label_cases():
     d = date(2026, 6, 15)  # Lunes
-    assert day_label(d, multi_week=False) == "Lun"
-    assert day_label(d, multi_week=True) == "15 jun Lun"
+    assert day_label(d, multi_week=False, lang="es") == "Lun"
+    assert day_label(d, multi_week=True, lang="es") == "15 jun Lun"
+    assert day_label(d, multi_week=False, lang="en") == "Mon"
+    assert day_label(d, multi_week=True, lang="en") == "15 Jun Mon"
 
 
 def test_generate_md_and_build_report_branches():
     # generate_md con días ausentes / sin datos
     start, end = date(2026, 6, 1), date(2026, 6, 3)
-    md = generate_md(
+    md_es = generate_md(
         sleep_rows=[], stress_map={}, bb_map={}, activity_map={}, steps_map={},
         intensity_map={}, floors_map={}, act_detail=[], laps_map={}, records=[],
         vo2max=None, race_pred=None, start=start, end=end,
         cur_stats={"n_nights": 0}, base_stats={"n_nights": 0}, flags=["ℹ️ Sin datos"],
-        baseline_weeks=4, notice="Aviso de test",
+        baseline_weeks=4, notice="Aviso de test", lang="es",
     )
-    assert "Aviso de test" in md
-    assert "sin datos. El FR165 lo estima" in md
+    assert "Aviso de test" in md_es
+    assert "sin datos. El FR165 lo estima" in md_es
+
+    md_en = generate_md(
+        sleep_rows=[], stress_map={}, bb_map={}, activity_map={}, steps_map={},
+        intensity_map={}, floors_map={}, act_detail=[], laps_map={}, records=[],
+        vo2max=None, race_pred=None, start=start, end=end,
+        cur_stats={"n_nights": 0}, base_stats={"n_nights": 0}, flags=["ℹ️ No data"],
+        baseline_weeks=4, notice="Test notice", lang="en",
+    )
+    assert "Test notice" in md_en
+    assert "no data. The watch estimates" in md_en
 
     # build_report sobre BD con periodo largo (multi-week)
     with tempfile.TemporaryDirectory() as tmp:
@@ -1070,9 +1135,11 @@ def test_generate_md_and_build_report_branches():
         with patch("sys.stdout", new_callable=io.StringIO):
             start, end = demo_data.build(db)
             conn = sqlite3.connect(db)
-            md_multi, html_multi = build_report(conn, start - timedelta(days=21), end)
+            md_multi_es, html_multi_es = build_report(conn, start - timedelta(days=21), end, lang="es")
+            md_multi_en, html_multi_en = build_report(conn, start - timedelta(days=21), end, lang="en")
             conn.close()
-        assert "Evolución semana a semana" in md_multi
+        assert "Evolución semana a semana" in md_multi_es
+        assert "Week-by-week evolution" in md_multi_en
 
 
 def test_main_cli_arguments_and_execution():
@@ -1181,20 +1248,29 @@ def test_svg_sleep_timeline_all_branches():
     # Noche corta (<6h)
     short_night = SleepNight("2026-06-18", "2026-06-18 01:00:00", "2026-06-18 06:00:00", sleep_s=5*3600)
 
-    svg = svg_sleep_timeline("Sueño", ["1", "2", "3"], [bad_night, plain_night, short_night], fmt_duration)
-    assert 'class="tick short"' in svg
-    assert 'class="ph-light"' in svg
-    assert 'mediana acostarse' in svg
+    svg_es = svg_sleep_timeline("Sueño", ["1", "2", "3"], [bad_night, plain_night, short_night], fmt_duration, lang="es")
+    assert 'class="tick short"' in svg_es
+    assert 'class="ph-light"' in svg_es
+    assert 'mediana acostarse' in svg_es
+
+    svg_en = svg_sleep_timeline("Sleep", ["1", "2", "3"], [bad_night, plain_night, short_night], fmt_duration, lang="en")
+    assert 'class="tick short"' in svg_en
+    assert 'median bedtime' in svg_en
 
 
 def test_svg_recovery_map_all_branches():
     assert svg_recovery_map("Map", ["L"], [50], [60], 48, 62) == ""  # <2 puntos
     assert svg_recovery_map("Map", ["L", "M"], [50, 52], [60, 58], None, None) == ""  # Sin base
 
-    svg = svg_recovery_map("Map", ["L", "M"], [50, 52], [60, 58], 48, 62, swc_low=55, swc_high=68)
-    assert "swc-band" in svg
-    assert "RECUPERADO" in svg
-    assert "(hoy)" in svg
+    svg_es = svg_recovery_map("Map", ["L", "M"], [50, 52], [60, 58], 48, 62, swc_low=55, swc_high=68, lang="es")
+    assert "swc-band" in svg_es
+    assert "RECUPERADO" in svg_es
+    assert "(hoy)" in svg_es
+
+    svg_en = svg_recovery_map("Map", ["L", "M"], [50, 52], [60, 58], 48, 62, swc_low=55, swc_high=68, lang="en")
+    assert "swc-band" in svg_en
+    assert "RECOVERED" in svg_en
+    assert "(today)" in svg_en
 
 
 def test_svg_week_wheel_all_branches():
@@ -1214,13 +1290,18 @@ def test_svg_battery_range_all_branches():
 def test_svg_spo2_resp_all_branches():
     assert svg_spo2_resp("SpO2", ["L"], [None], [None], [None]) == ""
     # Con SpO2 y con Respiración
-    svg = svg_spo2_resp("SpO2", ["L", "M"], [92, 94], [96, 97], [13.5, 14.0])
-    assert "spo2-bar" in svg
-    assert "dot resp" in svg
-    assert "resp/min" in svg
+    svg_es = svg_spo2_resp("SpO2", ["L", "M"], [92, 94], [96, 97], [13.5, 14.0], lang="es")
+    assert "spo2-bar" in svg_es
+    assert "dot resp" in svg_es
+    assert "resp/min" in svg_es
+
+    svg_en = svg_spo2_resp("SpO2", ["L", "M"], [92, 94], [96, 97], [13.5, 14.0], lang="en")
+    assert "spo2-bar" in svg_en
+    assert "dot resp" in svg_en
+    assert "br/min" in svg_en
 
     # Solo Respiración con valores idénticos (lo_resp == hi_resp)
-    svg_same_resp = svg_spo2_resp("Resp", ["L", "M"], [None, None], [None, None], [14.0, 14.0])
+    svg_same_resp = svg_spo2_resp("Resp", ["L", "M"], [None, None], [None, None], [14.0, 14.0], lang="es")
     assert "dot resp" in svg_same_resp
 
 
@@ -1236,11 +1317,17 @@ def test_fitness_cards_html_all_branches():
 
     vo2max = (48.5, 45.0, "2026-06-01")
     race_pred = ("2026-06-01", 1200, 2500, 5600, 12000)
-    html = fitness_cards_html(vo2max, race_pred)
-    assert "VO2máx Carrera" in html
-    assert "VO2máx Ciclismo" in html
-    assert "5K" in html
-    assert "Maratón (42K)" in html
+    html_es = fitness_cards_html(vo2max, race_pred, lang="es")
+    assert "VO2máx Carrera" in html_es
+    assert "VO2máx Ciclismo" in html_es
+    assert "5K" in html_es
+    assert "Maratón (42K)" in html_es
+
+    html_en = fitness_cards_html(vo2max, race_pred, lang="en")
+    assert "VO2max Running" in html_en
+    assert "VO2max Cycling" in html_en
+    assert "5K" in html_en
+    assert "Marathon (42K)" in html_en
 
 
 def test_build_charts_all_branches():
@@ -1251,7 +1338,7 @@ def test_build_charts_all_branches():
         8 * 3600, 3600, 4 * 3600, 2 * 3600, 0,
         85, 60, "BALANCED", 48, 95, 92, 14,
     )
-    charts = build_charts(
+    charts_es = build_charts(
         sleep_rows=[sample_night],
         stress_map={"2026-06-01": 25},
         bb_map={"2026-06-01": (90, 20)},
@@ -1261,13 +1348,33 @@ def test_build_charts_all_branches():
         intensity_map={"2026-06-01": (40, 20, 10)},
         vo2max=(48, None, "2026-06-01"),
         race_pred=("2026-06-01", 1200, 2500, 5600, 12000),
+        lang="es",
     )
-    assert "Sueño" in charts
-    assert "FC reposo + HRV nocturno" in charts
-    assert "Respiración y SpO2 nocturnos" in charts
-    assert "Estrés y Body Battery" in charts
-    assert "Actividad" in charts
-    assert "Forma física" in charts
+    assert "Sueño" in charts_es
+    assert "FC reposo + HRV nocturno" in charts_es
+    assert "Respiración y SpO2 nocturnos" in charts_es
+    assert "Estrés y Body Battery" in charts_es
+    assert "Actividad" in charts_es
+    assert "Forma física" in charts_es
+
+    charts_en = build_charts(
+        sleep_rows=[sample_night],
+        stress_map={"2026-06-01": 25},
+        bb_map={"2026-06-01": (90, 20)},
+        steps_map={"2026-06-01": 10000},
+        start=start, end=end,
+        baselines={"rhr": 46, "hrv": 60, "swc_low": 52, "swc_high": 68},
+        intensity_map={"2026-06-01": (40, 20, 10)},
+        vo2max=(48, None, "2026-06-01"),
+        race_pred=("2026-06-01", 1200, 2500, 5600, 12000),
+        lang="en",
+    )
+    assert "Sleep" in charts_en
+    assert "Resting HR + Overnight HRV" in charts_en
+    assert "Overnight Respiration & SpO2" in charts_en
+    assert "Stress & Body Battery" in charts_en
+    assert "Activity" in charts_en
+    assert "Fitness" in charts_en
 
 
 def test_rings_and_tiles_html_branches():
@@ -1324,7 +1431,7 @@ def test_md_to_html_all_branches():
         "---\n\n"
         "Texto de pie\n"
     )
-    rendered = md_to_html(full_md, {"Sección con detalles": "<svg></svg>"})
+    rendered = md_to_html(full_md, {"Sección con detalles": "<svg></svg>"}, lang="es")
     assert "<h1>Titular Principal</h1>" in rendered
     assert "Métricas en detalle" in rendered
     assert "Notas sobre VO2máx" in rendered
@@ -1344,7 +1451,7 @@ def test_logo_svg_and_favicon_link_branches():
 
 def test_navbar_and_render_full():
     body = '<section class="sec" id="sueno"><h2>Sueño</h2></section>'
-    nav = _navbar("Garmin Log", body)
+    nav = _navbar("Garmin Log", body, lang="es")
     assert '<a href="#sueno">Sueño</a>' in nav
 
     full_html = render(
@@ -1357,10 +1464,12 @@ def test_navbar_and_render_full():
         end=date(2026, 6, 7),
         rings=[("Actividad", 1.0, "300 min", "OMS", "good")],
         tiles=[("FC reposo", "48 bpm", "■ =", "")],
+        lang="es",
     )
     assert "<!doctype html>" in full_html
     assert "topbar" in full_html
     assert "Sueño" in full_html
+
 
 def test_additional_coverage_cases():
     # 1. compute_social_jetlag con fecha inválida en una noche
@@ -1413,16 +1522,27 @@ def test_additional_coverage_cases():
         85, 60, "BALANCED", 48, 95, 92, 14,
         breathing_severity="MODERATE",
     )
-    md = generate_md(
+    md_es = generate_md(
         sleep_rows=[night_sev], stress_map={}, bb_map={}, activity_map={},
         steps_map={}, intensity_map={}, floors_map={}, act_detail=[], laps_map={},
         records=[], vo2max=(50.0, 45.0, "2026-06-01"), race_pred=None,
         start=date(2026, 6, 1), end=date(2026, 6, 1),
         cur_stats={"n_nights": 1}, base_stats={"n_nights": 0}, flags=[],
-        baseline_weeks=4,
+        baseline_weeks=4, lang="es",
     )
-    assert "Alteraciones respiratorias" in md
-    assert "**45** (bici)" in md
+    assert "Alteraciones respiratorias" in md_es
+    assert "**45** (bici)" in md_es
+
+    md_en = generate_md(
+        sleep_rows=[night_sev], stress_map={}, bb_map={}, activity_map={},
+        steps_map={}, intensity_map={}, floors_map={}, act_detail=[], laps_map={},
+        records=[], vo2max=(50.0, 45.0, "2026-06-01"), race_pred=None,
+        start=date(2026, 6, 1), end=date(2026, 6, 1),
+        cur_stats={"n_nights": 1}, base_stats={"n_nights": 0}, flags=[],
+        baseline_weeks=4, lang="en",
+    )
+    assert "Breathing disruptions" in md_en
+    assert "**45** (cycling)" in md_en
 
     # 8. build_report con BD vacía lanza aviso
     with patch("sys.stdout", new_callable=io.StringIO):
@@ -1457,7 +1577,7 @@ def test_additional_coverage_cases():
         "2026-06-02", "2026-06-01 23:00:00", "2026-06-02 07:00:00",
         8 * 3600, deep_s=0, rem_s=0, light_s=8 * 3600, awake_s=0,
     )
-    assert svg_sleep_timeline("Sueño", ["L"], [night_zero_ph], fmt_duration) != ""
+    assert svg_sleep_timeline("Sueño", ["L"], [night_zero_ph], fmt_duration, lang="es") != ""
 
     # fitness_cards_html con tiempos parciales (None, 0 y válidos)
     assert fitness_cards_html(None, ("2026-06-01", 1200, None, 0, None)) != ""
@@ -1466,29 +1586,35 @@ def test_additional_coverage_cases():
     # build_charts solo con pasos (sin minutos de intensidad) -> activa rama 'elif wheel'
     c = build_charts(
         sleep_rows=[], stress_map={}, bb_map={}, steps_map={"2026-06-01": 8000},
-        start=date(2026, 6, 1), end=date(2026, 6, 1),
+        start=date(2026, 6, 1), end=date(2026, 6, 1), lang="es",
     )
     assert "Actividad" in c
 
     # md_to_html con sección vacía
-    assert "<h2>Sueño</h2>" in md_to_html("## \n\n## Sueño\n\nTexto")
+    assert "<h2>Sueño</h2>" in md_to_html("## \n\n## Sueño\n\nTexto", lang="es")
 
 
 def test_compute_health_traffic_light():
     # 1. Estado óptimo
     cur_opt = {"sleep_s": 8 * 3600, "score": 88, "sri": 85, "hrv": 65, "rhr": 45, "stress": 22, "acwr": 1.05}
     base_opt = {"n_nights": 7, "sleep_s": 7.8 * 3600, "hrv": 62, "rhr": 46, "stress": 24}
-    tl_opt = compute_health_traffic_light(cur_opt, base_opt, ["✅ Buena semana de sueño y recuperación."])
-    assert tl_opt["state"] == "optimal"
-    assert tl_opt["badge"] == "🟢"
-    assert "Excelente duración" in tl_opt["sleep_diag"]
-    assert "preparado" in tl_opt["recommendation"].lower()
+    tl_opt_es = compute_health_traffic_light(cur_opt, base_opt, ["✅ Buena semana de sueño y recuperación."], lang="es")
+    assert tl_opt_es["state"] == "optimal"
+    assert tl_opt_es["badge"] == "🟢"
+    assert "Excelente duración" in tl_opt_es["sleep_diag"]
+    assert "preparado" in tl_opt_es["recommendation"].lower()
+
+    tl_opt_en = compute_health_traffic_light(cur_opt, base_opt, ["✅ Good week of sleep and recovery."], lang="en")
+    assert tl_opt_en["state"] == "optimal"
+    assert tl_opt_en["badge"] == "🟢"
+    assert "duration" in tl_opt_en["sleep_diag"].lower()
+    assert "primed" in tl_opt_en["recommendation"].lower()
 
     # 2. Estado atención / warning por déficit de sueño y estrés
     cur_warn = {"sleep_s": 6.2 * 3600, "score": 68, "sri": 64, "hrv": 54, "rhr": 49, "stress": 42, "acwr": 1.45}
     base_warn = {"n_nights": 7, "hrv": 60, "rhr": 46, "stress": 26}
     flags_warn = ["⚠️ 2 noches por debajo de 6 h de sueño.", "⚠️ Estrés medio elevado."]
-    tl_warn = compute_health_traffic_light(cur_warn, base_warn, flags_warn)
+    tl_warn = compute_health_traffic_light(cur_warn, base_warn, flags_warn, lang="es")
     assert tl_warn["state"] == "warning"
     assert tl_warn["badge"] == "🟡"
     assert "déficit" in tl_warn["sleep_diag"].lower()
@@ -1498,15 +1624,19 @@ def test_compute_health_traffic_light():
     cur_rec = {"sleep_s": 5.5 * 3600, "score": 50, "sri": 55, "hrv": 42, "rhr": 54, "stress": 48, "acwr": 1.6}
     base_rec = {"n_nights": 7, "hrv": 62, "rhr": 46, "stress": 25}
     flags_rec = ["⚠️ Alerta 1", "⚠️ Alerta 2", "⚠️ Alerta 3"]
-    tl_rec = compute_health_traffic_light(cur_rec, base_rec, flags_rec)
+    tl_rec = compute_health_traffic_light(cur_rec, base_rec, flags_rec, lang="es")
     assert tl_rec["state"] == "recovery"
     assert tl_rec["badge"] == "🔴"
     assert "descanso" in tl_rec["recommendation"].lower()
 
     # 4. Caso sin datos
-    tl_empty = compute_health_traffic_light({}, {}, [])
-    assert tl_empty["state"] in ("optimal", "warning")
-    assert "Sin registros" in tl_empty["sleep_diag"]
+    tl_empty_es = compute_health_traffic_light({}, {}, [], lang="es")
+    assert tl_empty_es["state"] in ("optimal", "warning")
+    assert "Sin registros" in tl_empty_es["sleep_diag"]
+
+    tl_empty_en = compute_health_traffic_light({}, {}, [], lang="en")
+    assert tl_empty_en["state"] in ("optimal", "warning")
+    assert "Insufficient sleep records" in tl_empty_en["sleep_diag"]
 
 
 def test_status_card_and_glossary_rendering():
@@ -1520,27 +1650,31 @@ def test_status_card_and_glossary_rendering():
         "recovery_diag": "Sistema nervioso listo",
         "recommendation": "Apto para entrenar",
     }
-    card = status_card_html(tl)
+    card = status_card_html(tl, lang="es")
     assert "status-optimal" in card
     assert "🟢" in card
     assert "Excelente descanso" in card
 
     # 2. glossary_modal_html & tooltip_html
-    g_html = glossary_modal_html()
-    assert "glossary-modal" in g_html
-    assert "Glosario de Métricas" in g_html
-    assert "SRI" in g_html
-    assert "ACWR" in g_html
-    assert "HRV" in g_html
+    g_html_es = glossary_modal_html(lang="es")
+    assert "glossary-modal" in g_html_es
+    assert "Glosario de Métricas" in g_html_es
+    assert "SRI" in g_html_es
+    assert "ACWR" in g_html_es
+    assert "HRV" in g_html_es
+
+    g_html_en = glossary_modal_html(lang="en")
+    assert "glossary-modal" in g_html_en
+    assert "Health &amp; Metric Glossary" in g_html_en or "Health &amp; Metric" in g_html_en or "Health" in g_html_en
 
     t_html = tooltip_html()
     assert "biodelta-tooltip" in t_html
 
     # 3. METRIC_EXPLANATIONS
-    assert "sri" in METRIC_EXPLANATIONS
-    assert "acwr" in METRIC_EXPLANATIONS
-    assert "decoupling" in METRIC_EXPLANATIONS
-    assert "vo2max" in METRIC_EXPLANATIONS
+    assert "sri" in METRIC_EXPLANATIONS["es"] and "sri" in METRIC_EXPLANATIONS["en"]
+    assert "acwr" in METRIC_EXPLANATIONS["es"] and "acwr" in METRIC_EXPLANATIONS["en"]
+    assert "decoupling" in METRIC_EXPLANATIONS["es"] and "decoupling" in METRIC_EXPLANATIONS["en"]
+    assert "vo2max" in METRIC_EXPLANATIONS["es"] and "vo2max" in METRIC_EXPLANATIONS["en"]
 
     # 4. render() incluye el semáforo y los componentes
     full = render(
@@ -1548,6 +1682,7 @@ def test_status_card_and_glossary_rendering():
         sleep_rows=[], stress_map={}, bb_map={}, steps_map={},
         start=date(2026, 6, 1), end=date(2026, 6, 7),
         traffic_light=tl,
+        lang="es",
     )
     assert "status-card" in full
     assert "glossary-modal" in full

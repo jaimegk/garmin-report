@@ -69,6 +69,7 @@ def load_settings() -> dict:
         "steps_daily_goal": 10000,
         "intensity_weekly_goal": 150,
         "theme": "light",
+        "language": "en",
     }
     if SETTINGS_PATH.exists():
         try:
@@ -81,7 +82,7 @@ def load_settings() -> dict:
 
 def save_settings(data: dict) -> dict:
     current = load_settings()
-    for k in ("sleep_target_hours", "steps_daily_goal", "intensity_weekly_goal", "theme"):
+    for k in ("sleep_target_hours", "steps_daily_goal", "intensity_weekly_goal", "theme", "language"):
         if k in data:
             current[k] = data[k]
     SETTINGS_PATH.write_text(json.dumps(current, indent=2, ensure_ascii=False), encoding="utf-8")
@@ -115,7 +116,7 @@ def get_db_date_range(db_file: Path) -> tuple[date | None, date | None]:
         return None, None
 
 
-def get_available_weeks(db_file: Path) -> list[dict]:
+def get_available_weeks(db_file: Path, lang: str = "en") -> list[dict]:
     """Devuelve la lista de semanas ISO disponibles en la BD."""
     min_d, max_d = get_db_date_range(db_file)
     if not min_d or not max_d:
@@ -125,13 +126,15 @@ def get_available_weeks(db_file: Path) -> list[dict]:
     start_monday = min_d - timedelta(days=min_d.weekday())
     end_sunday = max_d + timedelta(days=6 - max_d.weekday())
 
+    months = generate_report.MONTHS_SHORT.get(lang, generate_report.MONTHS_SHORT["en"])
+    week_tag = "Semana" if lang == "es" else "Week"
+
     weeks = []
     curr_start = end_sunday - timedelta(days=6)
     while curr_start >= start_monday:
         curr_end = curr_start + timedelta(days=6)
-        # Formato de etiqueta amigable: "15–21 jun 2026 (Semana 25)"
         iso_year, iso_week, _ = curr_start.isocalendar()
-        label = f"{curr_start.day} {generate_report.MONTHS_ES[curr_start.month]} – {curr_end.day} {generate_report.MONTHS_ES[curr_end.month]} {curr_end.year} (Semana {iso_week})"
+        label = f"{curr_start.day} {months[curr_start.month]} – {curr_end.day} {months[curr_end.month]} {curr_end.year} ({week_tag} {iso_week})"
         weeks.append({
             "label": label,
             "start": curr_start.isoformat(),
@@ -148,7 +151,6 @@ def check_garmin_auth() -> bool:
     token_dir = Path.home() / ".garminconnect"
     if not token_dir.exists():
         return False
-    # Buscar si hay carpetas o archivos de token
     for p in token_dir.rglob("garmin_tokens.json"):
         if p.is_file() and p.stat().st_size > 10:
             return True
@@ -246,11 +248,11 @@ class BioDeltaRequestHandler(BaseHTTPRequestHandler):
 
         # 2. Rutas de la API REST
         if path == "/api/status":
-            self.handle_get_status()
+            self.handle_get_status(query)
             return
 
         if path == "/api/weeks":
-            self.handle_get_weeks()
+            self.handle_get_weeks(query)
             return
 
         if path == "/api/report":
@@ -263,7 +265,7 @@ class BioDeltaRequestHandler(BaseHTTPRequestHandler):
             return
 
         if path == "/api/demo":
-            self.handle_get_demo()
+            self.handle_get_demo(query)
             return
 
         if path == "/api/settings":
@@ -271,7 +273,9 @@ class BioDeltaRequestHandler(BaseHTTPRequestHandler):
             return
 
         if path == "/api/glossary":
-            self._send_json({"status": "ok", "glossary": render_html.METRIC_EXPLANATIONS})
+            lang = query.get("lang", ["en"])[0]
+            glossary_data = render_html.METRIC_EXPLANATIONS.get(lang, render_html.METRIC_EXPLANATIONS["en"])
+            self._send_json({"status": "ok", "glossary": glossary_data})
             return
 
         self.send_error(404, "Endpoint not found")
@@ -320,10 +324,11 @@ class BioDeltaRequestHandler(BaseHTTPRequestHandler):
     # Manejadores de la API
     # -----------------------------------------------------------------------
 
-    def handle_get_status(self):
+    def handle_get_status(self, query: dict = None):
+        lang = (query or {}).get("lang", ["en"])[0]
         has_db = DB_PATH.exists() and DB_PATH.stat().st_size > 0
         min_d, max_d = get_db_date_range(DB_PATH) if has_db else (None, None)
-        weeks = get_available_weeks(DB_PATH) if has_db else []
+        weeks = get_available_weeks(DB_PATH, lang=lang) if has_db else []
         has_tokens = check_garmin_auth()
         garmin_exec = generate_report.garmin_bin()
 
@@ -344,7 +349,8 @@ class BioDeltaRequestHandler(BaseHTTPRequestHandler):
             "settings": load_settings(),
         })
 
-    def handle_get_weeks(self):
+    def handle_get_weeks(self, query: dict = None):
+        lang = (query or {}).get("lang", ["en"])[0]
         has_db = DB_PATH.exists() and DB_PATH.stat().st_size > 0
         target_db = DB_PATH if has_db else DEMO_DB_PATH
         if not target_db.exists():
@@ -352,7 +358,7 @@ class BioDeltaRequestHandler(BaseHTTPRequestHandler):
             demo_data.build(DEMO_DB_PATH)
             target_db = DEMO_DB_PATH
 
-        weeks = get_available_weeks(target_db)
+        weeks = get_available_weeks(target_db, lang=lang)
         min_d, max_d = get_db_date_range(target_db)
         self._send_json({
             "status": "ok",
@@ -363,6 +369,7 @@ class BioDeltaRequestHandler(BaseHTTPRequestHandler):
         })
 
     def handle_get_report(self, query: dict):
+        lang = query.get("lang", ["en"])[0]
         is_demo = query.get("demo", ["0"])[0] in ("1", "true")
         start_str = query.get("start", [None])[0]
         end_str = query.get("end", [None])[0]
@@ -374,7 +381,7 @@ class BioDeltaRequestHandler(BaseHTTPRequestHandler):
             if not target_db.exists():
                 demo_data.build(target_db)
             generated_on = demo_data.GENERATED_ON
-            notice = "Informe de ejemplo con datos sintéticos: no corresponde a ninguna persona real."
+            notice = "Sample report with synthetic data: does not correspond to any real person." if lang == "en" else "Informe de ejemplo con datos sintéticos: no corresponde a ninguna persona real."
             if not start_str or not end_str:
                 start, end = demo_data.REPORT_START, demo_data.REPORT_END
             else:
@@ -397,15 +404,15 @@ class BioDeltaRequestHandler(BaseHTTPRequestHandler):
 
         try:
             conn = sqlite3.connect(target_db)
-            md, html_content = generate_report.build_report(conn, start, end, generated_on, notice)
+            md, html_content = generate_report.build_report(conn, start, end, generated_on, notice, lang=lang)
             
             tz_min = generate_report.tz_offset_minutes(conn)
             cur_stats = generate_report.metric_stats(conn, start, end, tz_min)
             b_start, b_end = generate_report.baseline_range(start, generate_report.BASELINE_WEEKS)
             base_stats = generate_report.metric_stats(conn, b_start, b_end, tz_min)
             sleep_rows = generate_report.query_sleep(conn, start, end)
-            flags = generate_report.compute_flags(sleep_rows, cur_stats, base_stats)
-            traffic_light = generate_report.compute_health_traffic_light(cur_stats, base_stats, flags, sleep_rows)
+            flags = generate_report.compute_flags(sleep_rows, cur_stats, base_stats, lang=lang)
+            traffic_light = generate_report.compute_health_traffic_light(cur_stats, base_stats, flags, sleep_rows, lang=lang)
             conn.close()
 
             prev_start = start - timedelta(days=7)
@@ -418,7 +425,7 @@ class BioDeltaRequestHandler(BaseHTTPRequestHandler):
                 "is_demo": target_db == DEMO_DB_PATH,
                 "start": start.isoformat(),
                 "end": end.isoformat(),
-                "title": generate_report.title_range(start, end),
+                "title": generate_report.title_range(start, end, lang=lang),
                 "traffic_light": traffic_light,
                 "flags": flags,
                 "prev_week": {"start": prev_start.isoformat(), "end": prev_end.isoformat()},
@@ -429,24 +436,27 @@ class BioDeltaRequestHandler(BaseHTTPRequestHandler):
         except Exception as e:
             self._send_json({"status": "error", "message": f"Error al generar informe: {str(e)}"}, 500)
 
-    def handle_get_demo(self):
+    def handle_get_demo(self, query: dict = None):
+        lang = (query or {}).get("lang", ["en"])[0]
         DEMO_DB_PATH.parent.mkdir(exist_ok=True)
         DEMO_DB_PATH.unlink(missing_ok=True)
         start, end = demo_data.build(DEMO_DB_PATH)
         conn = sqlite3.connect(DEMO_DB_PATH)
-        notice = "Informe de ejemplo con datos sintéticos: no corresponde a ninguna persona real."
-        md, html_content = generate_report.build_report(conn, start, end, demo_data.GENERATED_ON, notice)
+        notice = "Sample report with synthetic data: does not correspond to any real person." if lang == "en" else "Informe de ejemplo con datos sintéticos: no corresponde a ninguna persona real."
+        md, html_content = generate_report.build_report(conn, start, end, demo_data.GENERATED_ON, notice, lang=lang)
         conn.close()
 
+        msg = "Demo environment generated successfully" if lang == "en" else "Entorno de demostración generado con éxito"
         self._send_json({
             "status": "ok",
             "is_demo": True,
             "start": start.isoformat(),
             "end": end.isoformat(),
-            "title": generate_report.title_range(start, end),
+            "title": generate_report.title_range(start, end, lang=lang),
             "html": html_content,
-            "message": "Entorno de demostración generado con éxito",
+            "message": msg,
         })
+
 
     def handle_post_sync(self, data: dict):
         with _sync_lock:

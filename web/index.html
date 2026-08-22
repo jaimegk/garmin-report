@@ -1,15 +1,17 @@
 <!doctype html>
-<html lang="es">
+<html lang="en">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>BioDelta · Visor de Salud y Rendimiento</title>
+  <title>BioDelta · Health & Performance Log</title>
   <link rel="icon" type="image/png" href="/assets/logo/favicon-64.png">
   <link rel="stylesheet" href="/web/styles.css">
   <script>
     try {
       var t = localStorage.getItem('biodelta-theme') || 'light';
       if (t === 'dark') document.documentElement.dataset.theme = 'dark';
+      var l = localStorage.getItem('biodelta-lang') || 'en';
+      document.documentElement.lang = l;
     } catch(e) {}
   </script>
 </head>
@@ -28,37 +30,40 @@
 
       <!-- Controles de Time Travel / Navegación temporal -->
       <div class="time-nav">
-        <button id="btn-prev-week" class="time-btn" title="Semana anterior (◀)" aria-label="Semana anterior">◀</button>
+        <button id="btn-prev-week" class="time-btn" title="Previous week (◀)" aria-label="Previous week">◀</button>
         <div class="range-selector-wrap">
-          <select id="range-select" aria-label="Seleccionar semana o periodo">
-            <option value="loading">Cargando fechas...</option>
+          <select id="range-select" aria-label="Select week or date range">
+            <option value="loading">Loading dates...</option>
           </select>
         </div>
-        <button id="btn-next-week" class="time-btn" title="Semana siguiente (▶)" aria-label="Semana siguiente">▶</button>
+        <button id="btn-next-week" class="time-btn" title="Next week (▶)" aria-label="Next week">▶</button>
       </div>
 
       <!-- Acciones y Herramientas -->
       <div class="app-actions">
-        <button id="btn-open-sync" class="action-btn primary" title="Sincronizar con Garmin Connect">
-          <span class="icon">🔄</span> Sincronizar
+        <button id="btn-lang" class="action-btn lang-btn" type="button" title="Switch to Spanish" aria-label="Switch to Spanish">
+          🇬🇧 EN
         </button>
-        <button id="btn-open-upload" class="action-btn" title="Cargar archivo garmin_data.db">
-          <span class="icon">📁</span> Cargar
+        <button id="btn-open-sync" class="action-btn primary" title="Sync with Garmin Connect">
+          <span class="icon">🔄</span> <span id="lbl-sync">Sync</span>
         </button>
-        <button id="btn-open-demo" class="action-btn" title="Probar con datos sintéticos de demostración">
+        <button id="btn-open-upload" class="action-btn" title="Load garmin_data.db file">
+          <span class="icon">📁</span> <span id="lbl-upload">Upload</span>
+        </button>
+        <button id="btn-open-demo" class="action-btn" title="Try with synthetic demo data">
           <span class="icon">✨</span> Demo
         </button>
-        <button id="btn-open-glossary" class="action-btn" title="Glosario explicativo de métricas de salud">
-          <span class="icon">📖</span> Glosario
+        <button id="btn-open-glossary" class="action-btn" title="Educational health metric glossary">
+          <span class="icon">📖</span> <span id="lbl-glossary">Glossary</span>
         </button>
-        <button id="btn-open-settings" class="action-btn" title="Ajustes y objetivos de salud">
+        <button id="btn-open-settings" class="action-btn" title="Health targets & settings">
           <span class="icon">⚙️</span>
         </button>
-        <button id="btn-print" class="action-btn" title="Exportar a PDF o Imprimir">
+        <button id="btn-print" class="action-btn" title="Export to PDF or Print">
           <span class="icon">🖨️</span>
         </button>
-        <button id="theme-btn" class="theme-toggle" type="button" aria-label="Cambiar tema claro/oscuro">
-          ☾ Oscuro
+        <button id="theme-btn" class="theme-toggle" type="button" aria-label="Toggle dark/light theme">
+          ☾ Dark
         </button>
       </div>
     </div>
@@ -70,36 +75,36 @@
     <!-- Estado de Carga -->
     <div id="loading-view" class="center-state" style="display: none;">
       <div class="spinner"></div>
-      <p id="loading-msg">Generando informe de salud...</p>
+      <p id="loading-msg" data-i18n="loading_report">Generating health report...</p>
     </div>
 
     <!-- Estado de Bienvenida / Onboarding Zero-Tech -->
     <div id="onboarding-view" class="center-state" style="display: none;">
       <div class="onboarding-card">
-        <div class="onboarding-badge">👋 ¡Bienvenido a BioDelta!</div>
-        <h2>Tus métricas de salud de Garmin, claras y privadas</h2>
-        <p class="onboarding-subtitle">100% local en tu dispositivo, sin servidores externos. Elige cómo empezar:</p>
+        <div class="onboarding-badge" data-i18n="onboarding_badge">👋 Welcome to BioDelta!</div>
+        <h2 data-i18n="onboarding_title">Your Garmin health metrics, clear and private</h2>
+        <p class="onboarding-subtitle" data-i18n="onboarding_subtitle">100% local on your device, no external servers. Choose how to start:</p>
         
         <div class="onboarding-grid">
           <div class="onboarding-option" id="card-connect-garmin">
             <span class="option-icon">🔐</span>
-            <h3>Conectar con Garmin</h3>
-            <p>Introduce tu cuenta de Garmin Connect para sincronizar automáticamente con soporte 2FA.</p>
-            <button class="btn primary">Conectar Garmin</button>
+            <h3 data-i18n="card_garmin_title">Connect with Garmin</h3>
+            <p data-i18n="card_garmin_desc">Sign in with your Garmin Connect account to sync automatically with 2FA support.</p>
+            <button class="btn primary" data-i18n="card_garmin_btn">Connect Garmin</button>
           </div>
 
           <div class="onboarding-option" id="card-upload-file">
             <span class="option-icon">📂</span>
-            <h3>Cargar Base de Datos</h3>
-            <p>Arrastra tu archivo <code>garmin_data.db</code> existente para visualizarlo al instante.</p>
-            <button class="btn secondary">Subir Archivo</button>
+            <h3 data-i18n="card_upload_title">Load Database</h3>
+            <p data-i18n="card_upload_desc">Drag and drop your existing <code>garmin_data.db</code> file to visualize it instantly.</p>
+            <button class="btn secondary" data-i18n="card_upload_btn">Upload File</button>
           </div>
 
           <div class="onboarding-option" id="card-demo-mode">
             <span class="option-icon">✨</span>
-            <h3>Modo Demostración</h3>
-            <p>Explora un informe completo con datos sintéticos de prueba sin necesidad de reloj.</p>
-            <button class="btn secondary">Ver Demo</button>
+            <h3 data-i18n="card_demo_title">Demo Mode</h3>
+            <p data-i18n="card_demo_desc">Explore a full report with synthetic demo data without needing a watch.</p>
+            <button class="btn secondary" data-i18n="card_demo_btn">View Demo</button>
           </div>
         </div>
       </div>
@@ -116,13 +121,13 @@
   <div id="modal-sync" class="modal-overlay" aria-hidden="true">
     <div class="modal-box">
       <div class="modal-head">
-        <h3>🔄 Sincronizar con Garmin Connect</h3>
+        <h3 data-i18n="sync_modal_title">🔄 Sync with Garmin Connect</h3>
         <button class="btn-close" data-close="modal-sync">✕</button>
       </div>
       
       <div class="modal-tabs">
-        <button class="tab-btn active" data-tab="sync-tab-auto">Sincronización</button>
-        <button class="tab-btn" data-tab="sync-tab-login">Cuenta / Login</button>
+        <button class="tab-btn active" data-tab="sync-tab-auto" data-i18n="sync_tab_sync">Synchronization</button>
+        <button class="tab-btn" data-tab="sync-tab-login" data-i18n="sync_tab_login">Account / Login</button>
       </div>
 
       <div class="modal-body">
@@ -130,28 +135,28 @@
         <div id="sync-tab-auto" class="tab-content active">
           <div id="sync-auth-status" class="status-banner">
             <span class="status-indicator">●</span>
-            <span id="sync-auth-text">Comprobando sesión de Garmin...</span>
+            <span id="sync-auth-text" data-i18n="sync_checking_session">Checking Garmin session...</span>
           </div>
 
           <div class="form-group">
-            <label for="sync-start-date">Rango de fechas a extraer (opcional):</label>
+            <label for="sync-start-date" data-i18n="sync_range_label">Date range to extract (optional):</label>
             <div class="date-row">
-              <input type="date" id="sync-start-date" placeholder="Desde">
-              <span>hasta</span>
-              <input type="date" id="sync-end-date" placeholder="Hasta">
+              <input type="date" id="sync-start-date" placeholder="From">
+              <span data-i18n="sync_to">to</span>
+              <input type="date" id="sync-end-date" placeholder="To">
             </div>
-            <small class="form-help">Si lo dejas en blanco, Garmin traerá de forma incremental los datos más recientes.</small>
+            <small class="form-help" data-i18n="sync_help">If left blank, Garmin will incrementally fetch the most recent data.</small>
           </div>
 
-          <button id="btn-start-sync" class="btn primary full-width">
-            Iniciar Sincronización
+          <button id="btn-start-sync" class="btn primary full-width" data-i18n="btn_start_sync">
+            Start Synchronization
           </button>
 
           <div id="sync-progress" class="sync-progress-box" style="display: none;">
             <div class="progress-bar-wrap">
               <div class="progress-bar-indeterminate"></div>
             </div>
-            <p id="sync-progress-msg">Conectando con Garmin Connect...</p>
+            <p id="sync-progress-msg" data-i18n="sync_connecting">Connecting with Garmin Connect...</p>
           </div>
         </div>
 
@@ -159,21 +164,21 @@
         <div id="sync-tab-login" class="tab-content">
           <form id="form-garmin-login">
             <div class="form-group">
-              <label for="login-email">Email de Garmin Connect:</label>
-              <input type="email" id="login-email" required placeholder="tu@email.com" autocomplete="username">
+              <label for="login-email" data-i18n="login_email_label">Garmin Connect Email:</label>
+              <input type="email" id="login-email" required placeholder="you@email.com" autocomplete="username">
             </div>
 
             <div class="form-group">
-              <label for="login-password">Contraseña:</label>
+              <label for="login-password" data-i18n="login_pass_label">Password:</label>
               <input type="password" id="login-password" required placeholder="••••••••" autocomplete="current-password">
             </div>
 
-            <p class="privacy-note">
-              🔒 Tus credenciales se utilizan exclusivamente para obtener la sesión de Garmin localmente y nunca se envían a terceros.
+            <p class="privacy-note" data-i18n="privacy_note">
+              🔒 Your credentials are used exclusively to obtain the Garmin session locally and are never sent to third parties.
             </p>
 
-            <button type="submit" id="btn-submit-login" class="btn primary full-width">
-              Conectar y Autenticar
+            <button type="submit" id="btn-submit-login" class="btn primary full-width" data-i18n="btn_submit_login">
+              Connect and Authenticate
             </button>
           </form>
         </div>
@@ -182,12 +187,12 @@
         <div id="sync-mfa-box" class="mfa-box" style="display: none;">
           <div class="mfa-header">
             <span class="mfa-icon">📱</span>
-            <h4>Verificación en Dos Pasos (2FA)</h4>
+            <h4 data-i18n="mfa_title">Two-Step Verification (2FA)</h4>
           </div>
-          <p id="mfa-instructions">Introduce el código de seguridad que Garmin ha enviado a tu teléfono o correo electrónico:</p>
+          <p id="mfa-instructions" data-i18n="mfa_instructions">Enter the security code Garmin sent to your phone or email:</p>
           <div class="mfa-input-row">
             <input type="text" id="mfa-code" placeholder="123456" maxlength="8" autocomplete="one-time-code">
-            <button id="btn-submit-mfa" class="btn primary">Verificar</button>
+            <button id="btn-submit-mfa" class="btn primary" data-i18n="btn_submit_mfa">Verify</button>
           </div>
         </div>
       </div>
@@ -198,16 +203,16 @@
   <div id="modal-upload" class="modal-overlay" aria-hidden="true">
     <div class="modal-box">
       <div class="modal-head">
-        <h3>📁 Cargar Base de Datos</h3>
+        <h3 data-i18n="upload_modal_title">📁 Load Database</h3>
         <button class="btn-close" data-close="modal-upload">✕</button>
       </div>
       <div class="modal-body">
         <div id="drop-zone" class="drop-zone">
           <span class="drop-icon">📦</span>
-          <h4>Arrastra aquí tu archivo <code>garmin_data.db</code></h4>
-          <p>o haz clic para buscarlo en tu ordenador</p>
+          <h4 data-i18n="upload_drop_title">Drag your <code>garmin_data.db</code> file here</h4>
+          <p data-i18n="upload_drop_subtitle">or click to browse your computer</p>
           <input type="file" id="file-input" accept=".db,.sqlite,.sqlite3" style="display: none;">
-          <button type="button" id="btn-browse-file" class="btn secondary">Seleccionar archivo</button>
+          <button type="button" id="btn-browse-file" class="btn secondary" data-i18n="upload_browse_btn">Select file</button>
         </div>
         <div id="upload-status" class="upload-status-box" style="display: none;"></div>
       </div>
@@ -218,17 +223,17 @@
   <div id="modal-glossary" class="modal-overlay" aria-hidden="true">
     <div class="modal-box wide">
       <div class="modal-head">
-        <h3>📖 Glosario de Métricas y Salud</h3>
+        <h3 data-i18n="glossary_modal_title">📖 Health & Metric Glossary</h3>
         <button class="btn-close" data-close="modal-glossary">✕</button>
       </div>
       <div class="modal-filter-bar">
-        <input type="search" id="modal-glossary-search" placeholder="🔍 Buscar métrica o concepto (ej. SRI, HRV, ACWR)...">
+        <input type="search" id="modal-glossary-search" placeholder="🔍 Search metric or concept (e.g. SRI, HRV, ACWR)...">
         <div class="glossary-categories" id="glossary-cats">
-          <button type="button" class="cat-pill active" data-cat="all">Todos</button>
-          <button type="button" class="cat-pill" data-cat="Sueño">Sueño</button>
-          <button type="button" class="cat-pill" data-cat="Cardiovascular">Cardiovascular</button>
-          <button type="button" class="cat-pill" data-cat="Carga y Rendimiento">Carga</button>
-          <button type="button" class="cat-pill" data-cat="Bienestar">Bienestar</button>
+          <button type="button" class="cat-pill active" data-cat="all" data-i18n="cat_all">All</button>
+          <button type="button" class="cat-pill" data-cat="Sleep" data-i18n="cat_sleep">Sleep</button>
+          <button type="button" class="cat-pill" data-cat="Cardiovascular" data-i18n="cat_cardio">Cardiovascular</button>
+          <button type="button" class="cat-pill" data-cat="Load & Performance" data-i18n="cat_load">Load</button>
+          <button type="button" class="cat-pill" data-cat="Wellness" data-i18n="cat_wellness">Wellness</button>
         </div>
       </div>
       <div class="modal-body scrollable">
@@ -241,44 +246,44 @@
   <div id="modal-settings" class="modal-overlay" aria-hidden="true">
     <div class="modal-box">
       <div class="modal-head">
-        <h3>⚙️ Ajustes y Objetivos</h3>
+        <h3 data-i18n="settings_modal_title">⚙️ Target Settings</h3>
         <button class="btn-close" data-close="modal-settings">✕</button>
       </div>
       <div class="modal-body">
         <form id="form-settings">
           <div class="form-group">
-            <label for="set-sleep">Objetivo de sueño por noche:</label>
+            <label for="set-sleep" data-i18n="settings_sleep_label">Sleep goal per night:</label>
             <select id="set-sleep">
-              <option value="7.0">7 horas</option>
-              <option value="7.5">7 horas 30 min</option>
-              <option value="8.0" selected>8 horas (Recomendado)</option>
-              <option value="8.5">8 horas 30 min</option>
-              <option value="9.0">9 horas</option>
+              <option value="7.0">7 hours</option>
+              <option value="7.5">7 hours 30 min</option>
+              <option value="8.0" selected>8 hours (Recommended)</option>
+              <option value="8.5">8 hours 30 min</option>
+              <option value="9.0">9 hours</option>
             </select>
           </div>
 
           <div class="form-group">
-            <label for="set-steps">Objetivo de pasos diarios:</label>
+            <label for="set-steps" data-i18n="settings_steps_label">Daily steps goal:</label>
             <select id="set-steps">
-              <option value="6000">6.000 pasos</option>
-              <option value="8000">8.000 pasos</option>
-              <option value="10000" selected>10.000 pasos (Recomendado)</option>
-              <option value="12000">12.000 pasos</option>
-              <option value="15000">15.000 pasos</option>
+              <option value="6000">6,000 steps</option>
+              <option value="8000">8,000 steps</option>
+              <option value="10000" selected>10,000 steps (Recommended)</option>
+              <option value="12000">12,000 steps</option>
+              <option value="15000">15,000 steps</option>
             </select>
           </div>
 
           <div class="form-group">
-            <label for="set-intensity">Objetivo semanal de intensidad (OMS):</label>
+            <label for="set-intensity" data-i18n="settings_intensity_label">Weekly intensity minutes goal (WHO):</label>
             <select id="set-intensity">
-              <option value="150" selected>150 min / semana (Mínimo OMS)</option>
-              <option value="225">225 min / semana</option>
-              <option value="300">300 min / semana (Deportista)</option>
-              <option value="450">450 min / semana (Alto rendimiento)</option>
+              <option value="150" selected>150 min / week (WHO Minimum)</option>
+              <option value="225">225 min / week</option>
+              <option value="300">300 min / week (Athlete)</option>
+              <option value="450">450 min / week (High performance)</option>
             </select>
           </div>
 
-          <button type="submit" class="btn primary full-width">Guardar Preferencias</button>
+          <button type="submit" class="btn primary full-width" data-i18n="settings_save_btn">Save Preferences</button>
         </form>
       </div>
     </div>

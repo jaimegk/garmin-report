@@ -194,16 +194,12 @@ def svg_line(title, labels, values, name, unit="", fmt=None, ylim=None,
     return _frame(title, "".join(parts), note=band_label)
 
 
-def svg_sleep_timeline(title, labels, nights, fmt_dur) -> str:
-    """Cada noche en su hora real: cuándo te acostaste, cuándo te levantaste.
-
-    Una barra apilada por noche solo dice cuánto dormiste. Puesta sobre el reloj
-    dice además a qué hora, que es justo lo que mide la regularidad — y la
-    irregularidad se ve como un escalón, sin tener que leer ninguna columna.
-    """
+def svg_sleep_timeline(title, labels, nights, fmt_dur, lang: str = "en") -> str:
+    """Cada noche en su hora real: cuándo te acostaste, cuándo te levantaste."""
     rows = [(lab, n) for lab, n in zip(labels, nights)]
     if not any(n for _l, n in rows):
         return ""
+    is_es = lang == "es"
     pad_l, pad_r, pad_t, row_h = 52, 52, 22, 24
     height = pad_t + len(rows) * row_h + 26
     plot_w = W - pad_l - pad_r
@@ -230,8 +226,6 @@ def svg_sleep_timeline(title, labels, nights, fmt_dur) -> str:
         start, end = _parse_ts(n.start_ts) if n else None, _parse_ts(n.end_ts) if n else None
         if not (n and start and end and end > start):
             continue
-        # Ancla: las 18:00 del día en que te acostaste (si te acuestas de
-        # madrugada, el ancla es el día anterior).
         anchor = start.replace(hour=NIGHT_START_H, minute=0, second=0, microsecond=0)
         if start.hour < NIGHT_START_H:
             anchor -= timedelta(days=1)
@@ -276,9 +270,12 @@ def svg_sleep_timeline(title, labels, nights, fmt_dur) -> str:
                 f' class="tick{short}">{_esc(fmt_dur(n.sleep_s))}</text>'
             )
 
-    # Las medianas son la referencia de regularidad: cuanto más pegadas estén
-    # las barras a ellas, más constante ha sido la semana.
-    for values, name in ((beds, "acostarse"), (wakes, "despertar")):
+    median_targets = (
+        (beds, "acostarse" if is_es else "bedtime"),
+        (wakes, "despertar" if is_es else "wake")
+    )
+    prefix = "mediana" if is_es else "median"
+    for values, name in median_targets:
         med = _median(values)
         if med is None:
             continue
@@ -287,29 +284,27 @@ def svg_sleep_timeline(title, labels, nights, fmt_dur) -> str:
             f'<line x1="{x:.1f}" y1="{pad_t - 12:.1f}" x2="{x:.1f}"'
             f' y2="{pad_t + len(rows) * row_h:.1f}" class="median"/>'
             f'<text x="{x:.1f}" y="{pad_t - 15:.1f}" class="tick" text-anchor="middle">'
-            f'mediana {_esc(name)}</text>'
+            f'{prefix} {_esc(name)}</text>'
         )
 
-    items = [("Profundo", "var(--ph-1)"), ("REM", "var(--ph-2)"),
-             ("Ligero", "var(--ph-3)"), ("Despierto", "var(--ph-4)")]
-    return _frame(
-        title, "".join(parts), items, vb=f"0 0 {W} {height}",
-        note="El ancho de cada fase es proporcional a su total, no su orden real "
-             "dentro de la noche.",
-    )
+    if is_es:
+        items = [("Profundo", "var(--ph-1)"), ("REM", "var(--ph-2)"),
+                 ("Ligero", "var(--ph-3)"), ("Despierto", "var(--ph-4)")]
+        note = "El ancho de cada fase es proporcional a su total, no su orden real dentro de la noche."
+    else:
+        items = [("Deep", "var(--ph-1)"), ("REM", "var(--ph-2)"),
+                 ("Light", "var(--ph-3)"), ("Awake", "var(--ph-4)")]
+        note = "Bar segment width reflects total stage duration, not sleep sequence."
+
+    return _frame(title, "".join(parts), items, vb=f"0 0 {W} {height}", note=note)
 
 
-def svg_recovery_map(title, labels, rhr, hrv, base_rhr, base_hrv, swc_low=None, swc_high=None) -> str:
-    """FC en reposo contra HRV, unidas en orden cronológico.
-
-    Las dos métricas cuentan la misma historia y siempre hay que cruzarlas a
-    mano entre dos gráficas. Aquí cada noche es un punto y la semana es el
-    recorrido: hacia la esquina de arriba a la izquierda, recuperando; hacia la
-    de abajo a la derecha, acumulando fatiga.
-    """
+def svg_recovery_map(title, labels, rhr, hrv, base_rhr, base_hrv, swc_low=None, swc_high=None, lang: str = "en") -> str:
+    """FC en reposo contra HRV, unidas en orden cronológico."""
     idx = [i for i in range(len(labels)) if rhr[i] is not None and hrv[i] is not None]
     if len(idx) < 2 or not base_rhr or not base_hrv:
         return ""
+    is_es = lang == "es"
     w, h = 720, 320
     pl, pr, pt, pb = 60, 40, 30, 42
     pw, ph = w - pl - pr, h - pt - pb
@@ -334,13 +329,30 @@ def svg_recovery_map(title, labels, rhr, hrv, base_rhr, base_hrv, swc_low=None, 
         )
 
     # Cuadrantes sombreados y etiquetas explicativas
+    if is_es:
+        lbl_good = "● RECUPERADO (FC baja / HRV alta)"
+        lbl_bad = "● FATIGA / SOBRECARGA (FC alta / HRV baja)"
+        lbl_warn = "● Fatiga parasimpática (FC baja / HRV baja)"
+        lbl_info = "● Reactividad / Estrés (FC alta / HRV alta)"
+        x_axis_lbl = "FC reposo (bpm) →"
+        y_axis_lbl = "↑ HRV nocturna (ms)"
+        today_tag = " (hoy)"
+    else:
+        lbl_good = "● RECOVERED (Low HR / High HRV)"
+        lbl_bad = "● FATIGUE / OVERLOAD (High HR / Low HRV)"
+        lbl_warn = "● Parasympathetic fatigue (Low HR / Low HRV)"
+        lbl_info = "● Reactivity / Stress (High HR / High HRV)"
+        x_axis_lbl = "Resting HR (bpm) →"
+        y_axis_lbl = "↑ Overnight HRV (ms)"
+        today_tag = " (today)"
+
     parts.extend([
         f'<rect x="{pl}" y="{pt}" width="{bx - pl:.1f}" height="{by - pt:.1f}" class="q-good"/>',
         f'<rect x="{bx:.1f}" y="{by:.1f}" width="{pl + pw - bx:.1f}" height="{pt + ph - by:.1f}" class="q-bad"/>',
-        f'<text x="{pl + 12}" y="{pt + 18}" class="quad-label good">● RECUPERADO (FC baja / HRV alta)</text>',
-        f'<text x="{pl + pw - 12}" y="{pt + ph - 10}" class="quad-label bad" text-anchor="end">● FATIGA / SOBRECARGA (FC alta / HRV baja)</text>',
-        f'<text x="{pl + 12}" y="{pt + ph - 10}" class="quad-label warn">● Fatiga parasimpática (FC baja / HRV baja)</text>',
-        f'<text x="{pl + pw - 12}" y="{pt + 18}" class="quad-label info" text-anchor="end">● Reactividad / Estrés (FC alta / HRV alta)</text>',
+        f'<text x="{pl + 12}" y="{pt + 18}" class="quad-label good">{lbl_good}</text>',
+        f'<text x="{pl + pw - 12}" y="{pt + ph - 10}" class="quad-label bad" text-anchor="end">{lbl_bad}</text>',
+        f'<text x="{pl + 12}" y="{pt + ph - 10}" class="quad-label warn">{lbl_warn}</text>',
+        f'<text x="{pl + pw - 12}" y="{pt + 18}" class="quad-label info" text-anchor="end">{lbl_info}</text>',
     ])
 
     # Ejes de la cruz basal
@@ -349,8 +361,8 @@ def svg_recovery_map(title, labels, rhr, hrv, base_rhr, base_hrv, swc_low=None, 
         f'<line x1="{pl}" y1="{by:.1f}" x2="{pl + pw}" y2="{by:.1f}" class="median"/>',
         f'<text x="{pl - 8}" y="{by + 4:.1f}" class="tick strong" text-anchor="end">{round(base_hrv)} ms</text>',
         f'<text x="{bx:.1f}" y="{pt + ph + 16}" class="tick strong" text-anchor="middle">{round(base_rhr)} bpm</text>',
-        f'<text x="{pl + pw}" y="{h - 8}" class="tick" text-anchor="end">FC reposo (bpm) →</text>',
-        f'<text x="{pl}" y="{pt - 10}" class="tick">↑ HRV nocturna (ms)</text>',
+        f'<text x="{pl + pw}" y="{h - 8}" class="tick" text-anchor="end">{x_axis_lbl}</text>',
+        f'<text x="{pl}" y="{pt - 10}" class="tick">{y_axis_lbl}</text>',
     ])
 
     # Línea de recorrido temporal
@@ -364,7 +376,7 @@ def svg_recovery_map(title, labels, rhr, hrv, base_rhr, base_hrv, swc_low=None, 
         last = (rank == len(idx) - 1)
         dot_r = 7 if last else 4.5
         cls_dot = "dot last" if last else "dot"
-        lbl = f"{labels[i]} (hoy)" if last else labels[i]
+        lbl = f"{labels[i]}{today_tag}" if last else labels[i]
         lbl_cls = "tick strong" if last else "tick"
         tip_text = f"{labels[i]}: {round(rhr[i])} bpm · {round(hrv[i])} ms"
         parts.append(
@@ -374,19 +386,22 @@ def svg_recovery_map(title, labels, rhr, hrv, base_rhr, base_hrv, swc_low=None, 
             f'<text x="{px(rhr[i]):.1f}" y="{py(hrv[i]) - (10 if last else 7):.1f}" class="{lbl_cls}" text-anchor="middle" data-day-idx="{i}">{_esc(lbl)}</text>'
         )
 
-    swc_note = f" · Banda SWC HRV: {round(swc_low)}–{round(swc_high)} ms" if (swc_low and swc_high) else ""
-    return _frame(title, "".join(parts), vb=f"0 0 {w} {h}",
-                  note=f"Cruz central: tus medias basales ({round(base_rhr)} bpm / {round(base_hrv)} ms){swc_note}.")
+    if is_es:
+        swc_note = f" · Banda SWC HRV: {round(swc_low)}–{round(swc_high)} ms" if (swc_low and swc_high) else ""
+        note = f"Cruz central: tus medias basales ({round(base_rhr)} bpm / {round(base_hrv)} ms){swc_note}."
+    else:
+        swc_note = f" · HRV SWC band: {round(swc_low)}–{round(swc_high)} ms" if (swc_low and swc_high) else ""
+        note = f"Center cross: your baseline averages ({round(base_rhr)} bpm / {round(base_hrv)} ms){swc_note}."
+
+    return _frame(title, "".join(parts), vb=f"0 0 {w} {h}", note=note)
 
 
-def svg_week_wheel(title, labels, values, goal=None, unit="") -> str:
-    """Los días en círculo: una semana no es una recta, es un ciclo que se repite.
-
-    Cada radio es un día; el anillo de puntos, el objetivo.
-    """
+def svg_week_wheel(title, labels, values, goal=None, unit="", lang: str = "en") -> str:
+    """Los días en círculo: una semana no es una recta, es un ciclo que se repite."""
     vals = [v for v in values if v]
     if not vals:
         return ""
+    is_es = lang == "es"
     size, cx, cy, r0, r1 = 320, 160, 158, 54, 138
     top = max(max(vals), goal or 0) * 1.02
     n = len(values)
@@ -425,23 +440,24 @@ def svg_week_wheel(title, labels, values, goal=None, unit="") -> str:
             f' data-day-idx="{i}">{_esc(labels[i])}</text>'
         )
     avg = sum(vals) / len(vals)
+    avg_sub = "media/día" if is_es else "avg/day"
     parts.append(
         f'<text x="{cx}" y="{cy - 2}" class="wheel-val" text-anchor="middle">'
         f'{_esc(f"{avg:,.0f}".replace(",", "."))}</text>'
-        f'<text x="{cx}" y="{cy + 16}" class="tick" text-anchor="middle">media/día</text>'
+        f'<text x="{cx}" y="{cy + 16}" class="tick" text-anchor="middle">{avg_sub}</text>'
     )
-    note = f"Anillo punteado: {goal:,.0f} pasos.".replace(",", ".") if goal else ""
+    if is_es:
+        note = f"Anillo punteado: {goal:,.0f} pasos.".replace(",", ".") if goal else ""
+    else:
+        note = f"Dotted ring: {goal:,.0f} steps.".replace(",", ".") if goal else ""
     return _frame(title, "".join(parts), vb=f"0 0 {size} {size}", cls="wheel", note=note)
 
 
-def svg_battery_range(title, labels, lows, highs, stress) -> str:
-    """Cuánta batería gastaste cada día (la barra) y con cuánto estrés (el punto).
-
-    Body Battery no es un número, es un recorrido entre el mínimo y el máximo
-    del día: dibujar solo la media escondería justo eso.
-    """
+def svg_battery_range(title, labels, lows, highs, stress, lang: str = "en") -> str:
+    """Cuánta batería gastaste cada día (la barra) y con cuánto estrés (el punto)."""
     if not any(v is not None for v in stress) and not any(v is not None for v in highs):
         return ""
+    is_es = lang == "es"
     lo, hi = 0.0, 100.0
     slot = PLOT_W / len(labels) if labels else PLOT_W
     def px(i): return PAD_L + slot * (i + 0.5)
@@ -466,27 +482,27 @@ def svg_battery_range(title, labels, lows, highs, stress) -> str:
     for i, v in enumerate(stress):
         if v is None:
             continue
-        tip_text = f"{labels[i]} · Estrés {round(v)}"
+        stress_lbl = "Estrés" if is_es else "Stress"
+        tip_text = f"{labels[i]} · {stress_lbl} {round(v)}"
         parts.append(
             f'<circle cx="{px(i):.1f}" cy="{py(v):.1f}" r="4" class="dot stress"'
             f' data-day-idx="{i}" data-day="{_esc(labels[i])}" data-tip="{_esc(tip_text)}">'
             f'<title>{_esc(tip_text)}</title></circle>'
         )
-    items = [("Body Battery (mín–máx)", "var(--bb)"), ("Estrés medio", "var(--accent-warm)")]
+    if is_es:
+        items = [("Body Battery (mín–máx)", "var(--bb)"), ("Estrés medio", "var(--accent-warm)")]
+    else:
+        items = [("Body Battery (min–max)", "var(--bb)"), ("Average stress", "var(--accent-warm)")]
     return _frame(title, "".join(parts), items)
 
 
-def svg_spo2_resp(title, labels, spo2_mins, spo2_avgs, resp_avgs) -> str:
+def svg_spo2_resp(title, labels, spo2_mins, spo2_avgs, resp_avgs, lang: str = "en") -> str:
     """SpO2 (rango mín–media en barra) y Frecuencia Respiratoria nocturna (línea)."""
     has_spo2 = any(v is not None for v in spo2_avgs)
     has_resp = any(v is not None for v in resp_avgs)
     if not has_spo2 and not has_resp:
         return ""
-
-    # Dos escalas incompatibles (% y resp/min) en un solo dibujo solo se pueden
-    # leer si cada una tiene su propio eje: SpO2 a la izquierda, respiración a
-    # la derecha. Sin el eje derecho los puntos de respiración caen sobre una
-    # rejilla de porcentajes que no significa nada para ellos.
+    is_es = lang == "es"
     pad_r = 52
     plot_w = W - PAD_L - pad_r
     lo_spo2, hi_spo2 = 85.0, 100.0
@@ -503,13 +519,11 @@ def svg_spo2_resp(title, labels, spo2_mins, spo2_avgs, resp_avgs) -> str:
     parts = [_grid(lo_spo2, hi_spo2, lambda v: f"{v:.0f}%", pad_r=pad_r),
              _xlabels(labels, plot_w)]
 
-    # Eje derecho: la misma rejilla, rotulada en resp/min y del color de la línea.
-    # La unidad va pegada al tick de arriba; un rótulo aparte se solaparía con él.
     if resp_vals:
         dec = 0 if hi_resp - lo_resp >= 4 else 1
         for frac in (0.0, 0.5, 1.0):
             v = lo_resp + (hi_resp - lo_resp) * frac
-            unit = " resp/min" if frac == 1.0 else ""
+            unit = (" resp/min" if is_es else " br/min") if frac == 1.0 else ""
             parts.append(
                 f'<text x="{W - pad_r + 6}" y="{PAD_T + PLOT_H * (1 - frac):.1f}"'
                 f' class="tick resp" text-anchor="start"'
@@ -540,29 +554,32 @@ def svg_spo2_resp(title, labels, spo2_mins, spo2_avgs, resp_avgs) -> str:
     for i, v in enumerate(resp_avgs):
         if v is None:
             continue
-        tip_text = f"{labels[i]} · Respiración {v:.1f} resp/min"
+        resp_unit = "resp/min" if is_es else "br/min"
+        resp_lbl = "Respiración" if is_es else "Respiration"
+        tip_text = f"{labels[i]} · {resp_lbl} {v:.1f} {resp_unit}"
         parts.append(
             f'<circle cx="{px(i):.1f}" cy="{py_resp(v):.1f}" r="4" class="dot resp"'
             f' data-day-idx="{i}" data-day="{_esc(labels[i])}" data-tip="{_esc(tip_text)}">'
             f'<title>{_esc(tip_text)}</title></circle>'
         )
 
-    items = [("SpO2 mín–media (eje izq.)", "var(--accent)"),
-             ("Respiración media (eje der.)", "var(--ph-2)")]
-    return _frame(title, "".join(parts), items,
-                  note="Línea punteada: referencia 95% SpO2. Cada serie tiene su propio eje.")
+    if is_es:
+        items = [("SpO2 mín–media (eje izq.)", "var(--accent)"),
+                 ("Respiración media (eje der.)", "var(--ph-2)")]
+        note = "Línea punteada: referencia 95% SpO2. Cada serie tiene su propio eje."
+    else:
+        items = [("SpO2 min–avg (left axis)", "var(--accent)"),
+                 ("Avg. respiration (right axis)", "var(--ph-2)")]
+        note = "Dotted line: 95% SpO2 reference. Dual independent axes."
+    return _frame(title, "".join(parts), items, note=note)
 
 
-def svg_intensity_bars(title, labels, values, goal=None) -> str:
-    """Minutos de intensidad diarios en barras, con la línea del objetivo diario.
-
-    Misma geometría que el resto de series temporales: dentro de un `.pair` las
-    etiquetas del eje escalan a 19px, y en un lienzo de 320 px se apelotonan
-    hasta ser ilegibles.
-    """
+def svg_intensity_bars(title, labels, values, goal=None, lang: str = "en") -> str:
+    """Minutos de intensidad diarios en barras, con la línea del objetivo diario."""
     vals = [v for v in values if v is not None]
     if not vals:
         return ""
+    is_es = lang == "es"
     lo, hi = _nice_bounds(vals + [goal or 0], from_zero=True)
     slot = PLOT_W / len(labels) if labels else PLOT_W
     def px(i): return PAD_L + slot * (i + 0.5)
@@ -592,25 +609,32 @@ def svg_intensity_bars(title, labels, values, goal=None) -> str:
         )
 
     tot = sum(v for v in values if v)
-    note = (f"Línea: objetivo {round(goal)} min/día. " if goal else "")
-    note += f"Total del periodo: {round(tot)} min (objetivo OMS: 150–300 min/sem)."
+    if is_es:
+        note = (f"Línea: objetivo {round(goal)} min/día. " if goal else "")
+        note += f"Total del periodo: {round(tot)} min (objetivo OMS: 150–300 min/sem)."
+    else:
+        note = (f"Line: {round(goal)} min/day goal. " if goal else "")
+        note += f"Period total: {round(tot)} min (WHO target: 150–300 min/wk)."
     return _frame(title, "".join(parts), note=note)
 
 
-def fitness_cards_html(vo2max, race_pred) -> str:
+def fitness_cards_html(vo2max, race_pred, lang: str = "en") -> str:
     """Tarjetas visuales para VO2máx y ritmos previstos de carrera."""
     cards = []
+    is_es = lang == "es"
     if vo2max:
         run_v, cyc_v, _vo2_date = vo2max
         if run_v:
+            lbl = "VO2máx Carrera" if is_es else "VO2max Running"
             cards.append(
-                f'<div class="fit-card"><span class="fit-label">VO2máx Carrera</span>'
+                f'<div class="fit-card"><span class="fit-label">{lbl}</span>'
                 f'<span class="fit-val">{round(run_v)}</span>'
                 f'<span class="fit-sub">ml/kg/min</span></div>'
             )
         if cyc_v:
+            lbl = "VO2máx Ciclismo" if is_es else "VO2max Cycling"
             cards.append(
-                f'<div class="fit-card"><span class="fit-label">VO2máx Ciclismo</span>'
+                f'<div class="fit-card"><span class="fit-label">{lbl}</span>'
                 f'<span class="fit-val">{round(cyc_v)}</span>'
                 f'<span class="fit-sub">ml/kg/min</span></div>'
             )
@@ -630,11 +654,13 @@ def fitness_cards_html(vo2max, race_pred) -> str:
             spk = float(sec) / km
             return f"{int(spk // 60)}:{int(round(spk % 60)):02d}/km"
 
+        half_lbl = "Media (21K)" if is_es else "Half (21K)"
+        mar_lbl = "Maratón (42K)" if is_es else "Marathon (42K)"
         preds = [
             ("5K", fmt_time(t5), fmt_p(t5, 5.0)),
             ("10K", fmt_time(t10), fmt_p(t10, 10.0)),
-            ("Media (21K)", fmt_time(thalf), fmt_p(thalf, 21.0975)),
-            ("Maratón (42K)", fmt_time(tmar), fmt_p(tmar, 42.195)),
+            (half_lbl, fmt_time(thalf), fmt_p(thalf, 21.0975)),
+            (mar_lbl, fmt_time(tmar), fmt_p(tmar, 42.195)),
         ]
         for dist, t_str, pace_str in preds:
             if t_str != "–":
@@ -654,11 +680,12 @@ def fitness_cards_html(vo2max, race_pred) -> str:
 # ---------------------------------------------------------------------------
 
 def build_charts(sleep_rows, stress_map, bb_map, steps_map, start: date, end: date,
-                 baselines=None, intensity_map=None, vo2max=None, race_pred=None) -> dict:
+                 baselines=None, intensity_map=None, vo2max=None, race_pred=None, lang: str = "en") -> dict:
     """Devuelve {título de sección → svg}, alineado día a día con las tablas."""
     baselines = baselines or {}
     intensity_map = intensity_map or {}
-    # Mismo desfase que generate_md: la noche se cuelga del día en que te acostaste.
+    is_es = lang == "es"
+
     sleep_by_date = {
         (date.fromisoformat(n.calendar_date) - timedelta(days=1)).isoformat(): n
         for n in sleep_rows
@@ -675,64 +702,82 @@ def build_charts(sleep_rows, stress_map, bb_map, steps_map, start: date, end: da
 
     charts = {}
 
-    timeline = svg_sleep_timeline("Cada noche sobre el reloj", labels, nights, h_fmt)
+    t_sleep = "Cada noche sobre el reloj" if is_es else "Each night on the clock"
+    timeline = svg_sleep_timeline(t_sleep, labels, nights, h_fmt, lang=lang)
     if timeline:
         charts["Sueño"] = timeline
+        charts["Sleep"] = timeline
 
     rhr = [n.rhr if n else None for n in nights]
     hrv = [n.hrv if n else None for n in nights]
     pair = []
-    # Dos gráficas y no dos líneas: bpm y ms son escalas distintas, superponerlas
-    # en un eje compartido haría parecer que se cruzan cuando no significan nada.
     if any(v is not None for v in rhr):
-        pair.append(svg_line("FC en reposo", labels, rhr, "FC reposo", unit=" bpm"))
+        rhr_title = "FC en reposo" if is_es else "Resting Heart Rate"
+        rhr_name = "FC reposo" if is_es else "Resting HR"
+        pair.append(svg_line(rhr_title, labels, rhr, rhr_name, unit=" bpm"))
     if any(v is not None for v in hrv):
+        hrv_title = "HRV nocturno" if is_es else "Overnight HRV"
         swc_lo = baselines.get("swc_low")
         swc_hi = baselines.get("swc_high")
         band = (swc_lo, swc_hi) if (swc_lo is not None and swc_hi is not None) else None
-        band_note = f"Banda sombreada: tu rango normal ({round(swc_lo)}–{round(swc_hi)} ms)." if band else ""
-        pair.append(svg_line("HRV nocturno", labels, hrv, "HRV", unit=" ms",
+        if is_es:
+            band_note = f"Banda sombreada: tu rango normal ({round(swc_lo)}–{round(swc_hi)} ms)." if band else ""
+        else:
+            band_note = f"Shaded band: your normal baseline range ({round(swc_lo)}–{round(swc_hi)} ms)." if band else ""
+        pair.append(svg_line(hrv_title, labels, hrv, "HRV", unit=" ms",
                              band=band, band_label=band_note))
+    rec_title = "Mapa de recuperación de la semana" if is_es else "Weekly recovery map"
     cardio = svg_recovery_map(
-        "Mapa de recuperación de la semana", labels, rhr, hrv,
+        rec_title, labels, rhr, hrv,
         baselines.get("rhr"), baselines.get("hrv"),
         baselines.get("swc_low"), baselines.get("swc_high"),
+        lang=lang,
     )
     if pair:
         cardio += f'<div class="pair">{"".join(pair)}</div>'
     if cardio:
         charts["FC reposo + HRV nocturno"] = cardio
+        charts["Resting HR + Overnight HRV"] = cardio
 
-    # Respiración y SpO2 nocturnas
+    # Respiración y SpO2
     spo2_mins = [n.spo2_min if n else None for n in nights]
     spo2_avgs = [n.spo2_avg if n else None for n in nights]
     resp_avgs = [n.resp_avg if n else None for n in nights]
-    spo2_chart = svg_spo2_resp("SpO2 y Respiración nocturnas", labels, spo2_mins, spo2_avgs, resp_avgs)
+    spo2_title = "SpO2 y Respiración nocturnas" if is_es else "Overnight SpO2 & Respiration"
+    spo2_chart = svg_spo2_resp(spo2_title, labels, spo2_mins, spo2_avgs, resp_avgs, lang=lang)
     if spo2_chart:
         charts["Respiración y SpO2 nocturnos"] = spo2_chart
+        charts["Overnight Respiration & SpO2"] = spo2_chart
 
     stress = [stress_map.get(k) for k in keys]
     bb_hi = [bb_map[k][0] if k in bb_map else None for k in keys]
     bb_lo = [bb_map[k][1] if k in bb_map else None for k in keys]
-    battery = svg_battery_range(
-        "Body Battery y estrés, día a día", labels, bb_lo, bb_hi, stress)
+    bb_title = "Body Battery y estrés, día a día" if is_es else "Body Battery and stress, day by day"
+    battery = svg_battery_range(bb_title, labels, bb_lo, bb_hi, stress, lang=lang)
     if battery:
         charts["Estrés y Body Battery"] = battery
+        charts["Stress & Body Battery"] = battery
 
     steps = [steps_map.get(k) for k in keys]
-    wheel = svg_week_wheel("Pasos por día", labels, steps, goal=STEPS_GOAL)
+    wheel_title = "Pasos por día" if is_es else "Steps per day"
+    wheel = svg_week_wheel(wheel_title, labels, steps, goal=STEPS_GOAL, lang=lang)
     im_vals = [intensity_map.get(k, (None, None, None))[0] if intensity_map else None for k in keys]
-    int_bars = svg_intensity_bars("Minutos de intensidad / día", labels, im_vals, goal=150 / 7)
+    int_title = "Minutos de intensidad / día" if is_es else "Intensity minutes / day"
+    int_bars = svg_intensity_bars(int_title, labels, im_vals, goal=150 / 7, lang=lang)
     if wheel and int_bars:
         charts["Actividad"] = f'<div class="pair">{wheel}{int_bars}</div>'
+        charts["Activity"] = f'<div class="pair">{wheel}{int_bars}</div>'
     elif wheel:
         charts["Actividad"] = wheel
+        charts["Activity"] = wheel
 
-    fit_grid = fitness_cards_html(vo2max, race_pred)
+    fit_grid = fitness_cards_html(vo2max, race_pred, lang=lang)
     if fit_grid:
         charts["Forma física"] = fit_grid
+        charts["Fitness"] = fit_grid
 
     return charts
+
 
 
 # ---------------------------------------------------------------------------
@@ -740,159 +785,264 @@ def build_charts(sleep_rows, stress_map, bb_map, steps_map, start: date, end: da
 # ---------------------------------------------------------------------------
 
 METRIC_EXPLANATIONS = {
-    "sri": {
-        "title": "Índice de Regularidad del Sueño (SRI)",
-        "category": "Sueño",
-        "what": "Mide la probabilidad de que estés en el mismo estado (dormido o despierto) a la misma hora en dos días consecutivos (escala 0–100).",
-        "why": "Estudios científicos demuestran que un ritmo circadiano regular reduce la mortalidad prematura y el riesgo cardiovascular tanto o más que la propia duración del sueño.",
-        "range": ">80 es óptimo, 70–80 adecuado, <68 irregular."
+    "en": {
+        "sri": {
+            "title": "Sleep Regularity Index (SRI)",
+            "category": "Sleep",
+            "what": "Measures the probability of you being in the same state (asleep or awake) at the same time across two consecutive days (0–100 scale).",
+            "why": "Research demonstrates that circadian schedule consistency lowers premature mortality and cardiovascular risk as much or more than sleep duration alone.",
+            "range": ">80 is optimal, 70–80 adequate, <68 irregular."
+        },
+        "acwr": {
+            "title": "Acute:Chronic Workload Ratio (ACWR)",
+            "category": "Load & Performance",
+            "what": "Ratio of training load over the past 7 days (acute) compared to the last 4 weeks (chronic) calculated with exponentially weighted moving averages (EWMA).",
+            "why": "Defines the training 'sweet spot': maximizing aerobic fitness gains while minimizing injury and overtraining risks.",
+            "range": "0.80 to 1.30 is optimal (safe zone); 1.30 to 1.50 high progressive overload; >1.50 injury danger zone."
+        },
+        "hrv": {
+            "title": "Heart Rate Variability (HRV / RMSSD)",
+            "category": "Cardiovascular",
+            "what": "Measures millisecond variations between consecutive heartbeats during deep overnight sleep.",
+            "why": "The most sensitive physiological marker of parasympathetic (vagal tone) recovery and cellular regeneration.",
+            "range": "Elevated HRV relative to your baseline indicates freshness; a sustained drop indicates fatigue, illness, or stress."
+        },
+        "hrv_cv": {
+            "title": "HRV Stability / Coefficient of Variation (CV)",
+            "category": "Cardiovascular",
+            "what": "Coefficient of variation (standard deviation divided by mean) of nightly HRV across the week.",
+            "why": "Large day-to-day swings (>10%) indicate autonomic instability and accumulated fatigue.",
+            "range": "<6.5% very stable, 6.5–10% normal, >10.5% unstable."
+        },
+        "rhr": {
+            "title": "Resting Heart Rate (RHR)",
+            "category": "Cardiovascular",
+            "what": "Lowest beats per minute recorded during sleep or complete rest.",
+            "why": "A persistent rise (+3 to +5 bpm over baseline) is an early warning of fatigue, dehydration, or impending infection.",
+            "range": "A low, stable resting heart rate signals robust cardiovascular conditioning."
+        },
+        "swc": {
+            "title": "Smallest Worthwhile Change (SWC)",
+            "category": "Cardiovascular",
+            "what": "Statistical threshold band (±0.5 standard deviations from baseline) defining your individual normal physiological fluctuation range.",
+            "why": "Prevents overreacting to daily random noise and highlights meaningful physiological adaptations.",
+            "range": "Inside shaded band = baseline equilibrium; below = fatigue alert; above = supercompensation."
+        },
+        "decoupling": {
+            "title": "Aerobic Decoupling / Cardiac Drift",
+            "category": "Load & Performance",
+            "what": "Gradual rise in heart rate while pace or power remains constant during steady aerobic efforts (>25 min).",
+            "why": "Measures aerobic endurance capacity and mitochondrial cellular efficiency.",
+            "range": "<3.5% excellent aerobic fitness; 3.5–5% normal; >7.5% elevated drift due to aerobic fatigue, heat, or dehydration."
+        },
+        "gct": {
+            "title": "Ground Contact Time & Asymmetry",
+            "category": "Load & Performance",
+            "what": "Milliseconds each foot spends on the ground per stride and left/right balance percentage during running.",
+            "why": "Early detection of biomechanical compensations before tendonitis or joint strain develops.",
+            "range": "Ideal symmetry between 49.5% and 50.5% per leg."
+        },
+        "bb": {
+            "title": "Body Battery & Stress Level",
+            "category": "Wellness",
+            "what": "Real-time energy score (1 to 100) calculated from HRV, autonomic stress, sleep, and physical activity.",
+            "why": "Helps pace your daily demands: waking up above 75 ensures physical and mental reserves.",
+            "range": "Target overnight recharge >60 points; average daytime stress <30."
+        },
+        "spo2": {
+            "title": "Overnight SpO2 & Respiration Rate",
+            "category": "Wellness",
+            "what": "Blood oxygen saturation (%) and breathing frequency (breaths/min) during overnight rest.",
+            "why": "Indicative screening for sleep-disordered breathing (e.g. hypopneas/apneas) and systemic inflammation.",
+            "range": "Average SpO2 >94% is normal; typical sleep respiration 12 to 18 br/min."
+        },
+        "vo2max": {
+            "title": "Maximal Oxygen Uptake (VO2max)",
+            "category": "Cardiovascular",
+            "what": "Maximum rate of oxygen (ml/kg/min) your body can transport and utilize during maximal exertion.",
+            "why": "The single clinical biomarker with the strongest scientific correlation to longevity and all-cause risk reduction.",
+            "range": "Higher VO2max translates to greater life expectancy and functional healthspan."
+        }
     },
-    "acwr": {
-        "title": "Ratio de Carga Aguda:Crónica (ACWR)",
-        "category": "Carga y Rendimiento",
-        "what": "Relación entre la carga de entrenamiento de los últimos 7 días (aguda) y las últimas 4 semanas (crónica) calculada mediante medias móviles ponderadas (EWMA).",
-        "why": "Delimita el 'punto dulce' del entrenamiento: progresar en resistencia o fuerza minimizando el riesgo de lesiones y sobreentrenamiento.",
-        "range": "0.80 a 1.30 es óptimo (zona segura); 1.30 a 1.50 sobrecarga progresiva alta; >1.50 zona de peligro de lesión."
-    },
-    "hrv": {
-        "title": "Variabilidad de Frecuencia Cardíaca (HRV / RMSSD)",
-        "category": "Cardiovascular",
-        "what": "Mide las variaciones milisegundo a milisegundo entre latidos cardíacos sucesivos durante el descanso nocturno profundo.",
-        "why": "Es el reflejo directo más sensible de la activación del sistema nervioso parasimpático (freno vagal y capacidad de regeneración).",
-        "range": "Un HRV elevado respecto a tu línea base indica frescura y adaptación; una caída sostenida indica fatiga o estrés."
-    },
-    "hrv_cv": {
-        "title": "Estabilidad / Dispersión de HRV (CV)",
-        "category": "Cardiovascular",
-        "what": "Coeficiente de variación (desviación típica dividida por la media) del HRV nocturno a lo largo de la semana.",
-        "why": "Grandes oscilaciones diarias (>10%) señalan inestabilidad autonómica y cansancio acumulado no asimilado.",
-        "range": "<6.5% muy estable, 6.5–10% normal, >10.5% inestable."
-    },
-    "rhr": {
-        "title": "Frecuencia Cardíaca en Reposo (FC Reposo)",
-        "category": "Cardiovascular",
-        "what": "Pulsaciones por minuto más bajas registradas durante el sueño o en reposo absoluto.",
-        "why": "Un incremento persistente (+3 a +5 bpm sobre tu media histórica) es un aviso temprano de fatiga, deshidratación o el inicio de una infección.",
-        "range": "Una FC en reposo baja y estable es señal de excelente adaptación cardiovascular."
-    },
-    "swc": {
-        "title": "Cambio Mínimo Significativo (SWC)",
-        "category": "Cardiovascular",
-        "what": "Banda estadística (±0.5 desviaciones típicas de tu histórico) que define tu ventana de fluctuación fisiológica normal.",
-        "why": "Evita sobre-reaccionar a variaciones aleatorias de un solo día y resalta los cambios verdaderamente relevantes.",
-        "range": "Dentro del pasillo sombreado = equilibrio; por debajo = alerta de fatiga; por encima = supercompensación."
-    },
-    "decoupling": {
-        "title": "Desacoplamiento / Deriva Aeróbica",
-        "category": "Carga y Rendimiento",
-        "what": "Aumento progresivo de la frecuencia cardíaca mientras la velocidad o potencia se mantiene constante durante una actividad aeróbica (>25 min).",
-        "why": "Mide la resistencia cardiovascular y la eficiencia metabólica celular.",
-        "range": "<3.5% excelente adaptación aeróbica; 3.5–5% normal; >7.5% deriva elevada por fatiga, calor o deshidratación."
-    },
-    "gct": {
-        "title": "Tiempo de Contacto con el Suelo y Asimetría",
-        "category": "Carga y Rendimiento",
-        "what": "Milisegundos que el pie permanece apoyado en cada zancada y el balance porcentual izquierdo/derecho durante la carrera.",
-        "why": "Permite detectar descompensaciones biomecánicas tempranas antes de que originen una tendinopatía o lesión articular.",
-        "range": "Simetría ideal entre 49.5% y 50.5% por pierna."
-    },
-    "bb": {
-        "title": "Body Battery y Nivel de Estrés",
-        "category": "Bienestar",
-        "what": "Puntuación de energía corporal (1 a 100) calculada a partir de HRV, estrés, sueño y actividad.",
-        "why": "Permite gestionar el ritmo de la jornada: empezar el día por encima de 75 puntos garantiza reservas para entrenar y trabajar.",
-        "range": "Recarga nocturna deseada >60 puntos; estrés diurno medio <30."
-    },
-    "spo2": {
-        "title": "SpO2 Nocturna y Frecuencia Respiratoria",
-        "category": "Bienestar",
-        "what": "Saturación de oxígeno en sangre (%) y respiraciones por minuto durante el descanso nocturno.",
-        "why": "Cribado no diagnóstico de alteraciones respiratorias nocturnas (como hipopneas/apneas) o sobrecargas inflamatorias.",
-        "range": "SpO2 media >94% es normal; frecuencia respiratoria habitual entre 12 y 18 resp/min."
-    },
-    "vo2max": {
-        "title": "Consumo Máximo de Oxígeno (VO2máx)",
-        "category": "Cardiovascular",
-        "what": "Volumen máximo de oxígeno (ml/kg/min) que tu cuerpo puede transportar y utilizar en esfuerzo máximo.",
-        "why": "El parámetro clínico con mayor evidencia científica sobre longevidad y reducción de riesgo por cualquier causa.",
-        "range": "A mayor VO2máx, mayor esperanza de vida y reserva fisiológica."
+    "es": {
+        "sri": {
+            "title": "Índice de Regularidad del Sueño (SRI)",
+            "category": "Sueño",
+            "what": "Mide la probabilidad de que estés en el mismo estado (dormido o despierto) a la misma hora en dos días consecutivos (escala 0–100).",
+            "why": "Estudios científicos demuestran que un ritmo circadiano regular reduce la mortalidad prematura y el riesgo cardiovascular tanto o más que la propia duración del sueño.",
+            "range": ">80 es óptimo, 70–80 adecuado, <68 irregular."
+        },
+        "acwr": {
+            "title": "Ratio de Carga Aguda:Crónica (ACWR)",
+            "category": "Carga y Rendimiento",
+            "what": "Relación entre la carga de entrenamiento de los últimos 7 días (aguda) y las últimas 4 semanas (crónica) calculada mediante medias móviles ponderadas (EWMA).",
+            "why": "Delimita el 'punto dulce' del entrenamiento: progresar en resistencia o fuerza minimizando el riesgo de lesiones y sobreentrenamiento.",
+            "range": "0.80 a 1.30 es óptimo (zona segura); 1.30 a 1.50 sobrecarga progresiva alta; >1.50 zona de peligro de lesión."
+        },
+        "hrv": {
+            "title": "Variabilidad de Frecuencia Cardíaca (HRV / RMSSD)",
+            "category": "Cardiovascular",
+            "what": "Mide las variaciones milisegundo a milisegundo entre latidos cardíacos sucesivos durante el descanso nocturno profundo.",
+            "why": "Es el reflejo directo más sensible de la activación del sistema nervioso parasimpático (freno vagal y capacidad de regeneración).",
+            "range": "Un HRV elevado respecto a tu línea base indica frescura y adaptación; una caída sostenida indica fatiga o estrés."
+        },
+        "hrv_cv": {
+            "title": "Estabilidad / Dispersión de HRV (CV)",
+            "category": "Cardiovascular",
+            "what": "Coeficiente de variación (desviación típica dividida por la media) del HRV nocturno a lo largo de la semana.",
+            "why": "Grandes oscilaciones diarias (>10%) señalan inestabilidad autonómica y cansancio acumulado no asimilado.",
+            "range": "<6.5% muy estable, 6.5–10% normal, >10.5% inestable."
+        },
+        "rhr": {
+            "title": "Frecuencia Cardíaca en Reposo (FC Reposo)",
+            "category": "Cardiovascular",
+            "what": "Pulsaciones por minuto más bajas registradas durante el sueño o en reposo absoluto.",
+            "why": "Un incremento persistente (+3 a +5 bpm sobre tu media histórica) es un aviso temprano de fatiga, deshidratación o el inicio de una infección.",
+            "range": "Una FC en reposo baja y estable es señal de excelente adaptación cardiovascular."
+        },
+        "swc": {
+            "title": "Cambio Mínimo Significativo (SWC)",
+            "category": "Cardiovascular",
+            "what": "Banda estadística (±0.5 desviaciones típicas de tu histórico) que define tu ventana de fluctuación fisiológica normal.",
+            "why": "Evita sobre-reaccionar a variaciones aleatorias de un solo día y resalta los cambios verdaderamente relevantes.",
+            "range": "Dentro del pasillo sombreado = equilibrio; por debajo = alerta de fatiga; por encima = supercompensación."
+        },
+        "decoupling": {
+            "title": "Desacoplamiento / Deriva Aeróbica",
+            "category": "Carga y Rendimiento",
+            "what": "Aumento progresivo de la frecuencia cardíaca mientras la velocidad o potencia se mantiene constante durante una actividad aeróbica (>25 min).",
+            "why": "Mide la resistencia cardiovascular y la eficiencia metabólica celular.",
+            "range": "<3.5% excelente adaptación aeróbica; 3.5–5% normal; >7.5% deriva elevada por fatiga, calor o deshidratación."
+        },
+        "gct": {
+            "title": "Tiempo de Contacto con el Suelo y Asimetría",
+            "category": "Carga y Rendimiento",
+            "what": "Milisegundos que el pie permanece apoyado en cada zancada y el balance porcentual izquierdo/derecho durante la carrera.",
+            "why": "Permite detectar descompensaciones biomecánicas tempranas antes de que originen una tendinopatía o lesión articular.",
+            "range": "Simetría ideal entre 49.5% y 50.5% por pierna."
+        },
+        "bb": {
+            "title": "Body Battery y Nivel de Estrés",
+            "category": "Bienestar",
+            "what": "Puntuación de energía corporal (1 a 100) calculada a partir de HRV, estrés, sueño y actividad.",
+            "why": "Permite gestionar el ritmo de la jornada: empezar el día por encima de 75 puntos garantiza reservas para entrenar y trabajar.",
+            "range": "Recarga nocturna deseada >60 puntos; estrés diurno medio <30."
+        },
+        "spo2": {
+            "title": "SpO2 Nocturna y Frecuencia Respiratoria",
+            "category": "Bienestar",
+            "what": "Saturación de oxígeno en sangre (%) y respiraciones por minuto durante el descanso nocturno.",
+            "why": "Cribado no diagnóstico de alteraciones respiratorias nocturnas (como hipopneas/apneas) o sobrecargas inflamatorias.",
+            "range": "SpO2 media >94% es normal; frecuencia respiratoria habitual entre 12 y 18 resp/min."
+        },
+        "vo2max": {
+            "title": "Consumo Máximo de Oxígeno (VO2máx)",
+            "category": "Cardiovascular",
+            "what": "Volumen máximo de oxígeno (ml/kg/min) que tu cuerpo puede transportar y utilizar en esfuerzo máximo.",
+            "why": "El parámetro clínico con mayor evidencia científica sobre longevidad y reducción de riesgo por cualquier causa.",
+            "range": "A mayor VO2máx, mayor esperanza de vida y reserva fisiológica."
+        }
     }
 }
 
 
-def status_card_html(tl: dict | None) -> str:
+def status_card_html(tl: dict | None, lang: str = "en") -> str:
     """Semáforo de salud y diagnóstico en lenguaje natural (Fase 1 Usabilidad)."""
     if not tl:
         return ""
+    is_es = lang == "es"
     state = tl.get("state", "optimal")
     badge = tl.get("badge", "🟢")
-    title = tl.get("title", "Estado óptimo")
+    title = tl.get("title", "Optimal State" if not is_es else "Estado óptimo")
     sleep_diag = tl.get("sleep_diag", "")
     recovery_diag = tl.get("recovery_diag", "")
     recommendation = tl.get("recommendation", "")
+
+    kicker = "Evaluación de Estado" if is_es else "Health Status Evaluation"
+    lbl_sleep = "Sueño:" if is_es else "Sleep:"
+    lbl_rec = "Recuperación y Estrés:" if is_es else "Recovery & Stress:"
+    lbl_rec_tag = "Recomendación:" if is_es else "Recommendation:"
+
     return (
         f'<div class="status-card status-{_esc(state)}">'
         f'<div class="status-header">'
         f'<span class="status-badge" aria-hidden="true">{badge}</span>'
         f'<div class="status-title-group">'
-        f'<span class="status-kicker">Evaluación de Estado</span>'
+        f'<span class="status-kicker">{kicker}</span>'
         f'<h3 class="status-title">{_esc(title)}</h3>'
         f'</div>'
         f'</div>'
         f'<div class="status-grid">'
         f'<div class="status-item">'
         f'<span class="status-icon" aria-hidden="true">🌙</span>'
-        f'<div><strong>Sueño:</strong> {_esc(sleep_diag)}</div>'
+        f'<div><strong>{lbl_sleep}</strong> {_esc(sleep_diag)}</div>'
         f'</div>'
         f'<div class="status-item">'
         f'<span class="status-icon" aria-hidden="true">⚡</span>'
-        f'<div><strong>Recuperación y Estrés:</strong> {_esc(recovery_diag)}</div>'
+        f'<div><strong>{lbl_rec}</strong> {_esc(recovery_diag)}</div>'
         f'</div>'
         f'<div class="status-item highlight">'
         f'<span class="status-icon" aria-hidden="true">🎯</span>'
-        f'<div><strong>Recomendación:</strong> {_esc(recommendation)}</div>'
+        f'<div><strong>{lbl_rec_tag}</strong> {_esc(recommendation)}</div>'
         f'</div>'
         f'</div>'
         f'</div>'
     )
 
 
-def glossary_modal_html() -> str:
+def glossary_modal_html(lang: str = "en") -> str:
     """Modal interactivo con el glosario de términos de salud y longevidad."""
+    is_es = lang == "es"
+    glossary_data = METRIC_EXPLANATIONS.get(lang, METRIC_EXPLANATIONS["en"])
     cards = []
-    for key, item in METRIC_EXPLANATIONS.items():
+    for key, item in glossary_data.items():
+        q_what = "¿Qué es?" if is_es else "What is it?"
+        q_why = "¿Por qué importa?" if is_es else "Why it matters:"
+        q_range = "Rango orientativo:" if is_es else "Reference range:"
         cards.append(
             f'<article class="glossary-card" data-category="{_esc(item["category"])}">'
             f'<div class="glossary-card-header">'
             f'<h4>{_esc(item["title"])}</h4>'
             f'<span class="glossary-badge">{_esc(item["category"])}</span>'
             f'</div>'
-            f'<p><strong>¿Qué es?</strong> {_esc(item["what"])}</p>'
-            f'<p><strong>¿Por qué importa?</strong> {_esc(item["why"])}</p>'
-            f'<p class="glossary-range"><strong>Rango orientativo:</strong> {_esc(item["range"])}</p>'
+            f'<p><strong>{q_what}</strong> {_esc(item["what"])}</p>'
+            f'<p><strong>{q_why}</strong> {_esc(item["why"])}</p>'
+            f'<p class="glossary-range"><strong>{q_range}</strong> {_esc(item["range"])}</p>'
             f'</article>'
         )
+
+    title_modal = "📖 Glosario de Métricas y Salud" if is_es else "📖 Health & Metric Glossary"
+    close_lbl = "Cerrar glosario" if is_es else "Close glossary"
+    search_ph = "🔍 Buscar métrica o concepto..." if is_es else "🔍 Search metric or concept (e.g. SRI, HRV, ACWR)..."
+    cat_all = "Todos" if is_es else "All"
+    cat_sleep = "Sueño" if is_es else "Sleep"
+    cat_cardio = "Cardiovascular"
+    cat_load = "Carga" if is_es else "Load"
+    cat_load_full = "Carga y Rendimiento" if is_es else "Load & Performance"
+    cat_well = "Bienestar" if is_es else "Wellness"
+
     return (
-        '<div id="glossary-modal" class="modal-backdrop" aria-hidden="true" role="dialog" aria-label="Glosario de Métricas">'
+        f'<div id="glossary-modal" class="modal-backdrop" aria-hidden="true" role="dialog" aria-label="{title_modal}">'
         '<div class="modal-dialog">'
         '<div class="modal-header">'
-        '<h3>📖 Glosario de Métricas y Salud</h3>'
-        '<button type="button" class="modal-close" id="glossary-close" aria-label="Cerrar glosario">✕</button>'
+        f'<h3>{title_modal}</h3>'
+        f'<button type="button" class="modal-close" id="glossary-close" aria-label="{close_lbl}">✕</button>'
         '</div>'
         '<div class="modal-filter-bar">'
-        '<input type="search" id="glossary-search" placeholder="🔍 Buscar métrica o concepto..." aria-label="Buscar en el glosario">'
+        f'<input type="search" id="glossary-search" placeholder="{search_ph}" aria-label="Search glossary">'
         '<div class="glossary-categories">'
-        '<button type="button" class="cat-pill active" data-cat="all">Todos</button>'
-        '<button type="button" class="cat-pill" data-cat="Sueño">Sueño</button>'
-        '<button type="button" class="cat-pill" data-cat="Cardiovascular">Cardiovascular</button>'
-        '<button type="button" class="cat-pill" data-cat="Carga y Rendimiento">Carga</button>'
-        '<button type="button" class="cat-pill" data-cat="Bienestar">Bienestar</button>'
+        f'<button type="button" class="cat-pill active" data-cat="all">{cat_all}</button>'
+        f'<button type="button" class="cat-pill" data-cat="{cat_sleep}">{cat_sleep}</button>'
+        f'<button type="button" class="cat-pill" data-cat="{cat_cardio}">{cat_cardio}</button>'
+        f'<button type="button" class="cat-pill" data-cat="{cat_load_full}">{cat_load}</button>'
+        f'<button type="button" class="cat-pill" data-cat="{cat_well}">{cat_well}</button>'
         '</div>'
         '</div>'
         f'<div class="glossary-grid">{"".join(cards)}</div>'
         '</div>'
         '</div>'
     )
+
 
 
 def tooltip_html() -> str:
@@ -1053,16 +1203,10 @@ def _table(rows: list[str]) -> str:
     return "".join(out)
 
 
-def md_to_html(md: str, charts: dict | None = None) -> str:
-    """Convierte el markdown del informe en HTML gráfico y editorial.
-
-    - Inyecta las gráficas SVG al inicio de cada sección `##`.
-    - En la sección `Resumen`, enseña únicamente las Señales destacadas (las métricas
-      ya están en los anillos de portada y tarjetas de cabecera).
-    - Agrupa las tablas y notas contextuales detalladas en bloques `<details class="collapsible">`
-      desplegables, manteniendo las cifras clave y gráficas inmediatamente a la vista.
-    """
+def md_to_html(md: str, charts: dict | None = None, lang: str = "en") -> str:
+    """Convierte el markdown del informe en HTML gráfico y editorial."""
     charts = charts or {}
+    is_es = lang == "es"
     out = []
     sections = re.split(r'(?m)^## ', md)
 
@@ -1098,7 +1242,7 @@ def md_to_html(md: str, charts: dict | None = None) -> str:
         if title in charts:
             out.append(charts[title])
 
-        if title == "Resumen":
+        if title in ("Resumen", "Summary"):
             bullets, res_table = [], []
             for l in content_lines:
                 s = l.strip()
@@ -1114,18 +1258,16 @@ def md_to_html(md: str, charts: dict | None = None) -> str:
                     for b, c in zip(bullets, classes)
                 )
                 out.append(f"<ul{ul}>{items}</ul>")
-            # Las tarjetas de cabecera solo cubren la semana actual: en un informe
-            # multi-semana esta tabla es la única evolución que hay, y perderla
-            # dejaría el HTML contando menos que el markdown.
             if res_table:
+                sum_title = "Métricas en detalle" if is_es else "Detailed metrics"
                 out.append(
-                    '<details class="collapsible"><summary>Métricas en detalle</summary>'
+                    f'<details class="collapsible"><summary>{sum_title}</summary>'
                     f'<div class="coll-body">{_table(res_table)}</div></details>'
                 )
             out.append("</div></section>")
             continue
 
-        if title == "Forma física":
+        if title in ("Forma física", "Fitness"):
             notes = []
             for l in content_lines:
                 s = l.strip()
@@ -1134,8 +1276,9 @@ def md_to_html(md: str, charts: dict | None = None) -> str:
                 elif s and not re.fullmatch(r"-{3,}", s):
                     notes.append(s)
             if notes:
+                fit_sum_title = "Notas sobre VO2máx y ritmos previstos" if is_es else "Notes on VO2max & predicted race times"
                 out.append(
-                    '<details class="collapsible"><summary>Notas sobre VO2máx y ritmos previstos</summary>'
+                    f'<details class="collapsible"><summary>{fit_sum_title}</summary>'
                     '<div class="coll-body">'
                 )
                 for n in notes:
@@ -1183,7 +1326,8 @@ def md_to_html(md: str, charts: dict | None = None) -> str:
             if s.startswith("### "):
                 sub_title = s[4:].strip()
                 detail_items.append(f"<h3>{_inline(sub_title)}</h3>")
-            elif s.startswith("**Media") or s.startswith("**Intensidad"):
+            elif (s.startswith("**Media") or s.startswith("**Average") or
+                  s.startswith("**Intensidad") or s.startswith("**Intensity")):
                 key_lines.append(f"<p class='key-metric'>{_inline(s)}</p>")
             elif re.fullmatch(r"-{3,}", s):
                 pass
@@ -1196,13 +1340,22 @@ def md_to_html(md: str, charts: dict | None = None) -> str:
             out.append(kl)
 
         if detail_items:
-            summary_label = {
-                "Sueño": "Desglose diario y contexto de sueño",
-                "FC reposo + HRV nocturno": "Desglose diario de FC y HRV",
-                "Respiración y SpO2 nocturnos": "Desglose diario y notas clínicas",
-                "Estrés y Body Battery": "Desglose diario de estrés y Body Battery",
-                "Actividad": "Desglose diario de actividad y sesiones",
-            }.get(title, "Ver desglose diario y detalles")
+            if is_es:
+                summary_label = {
+                    "Sueño": "Desglose diario y contexto de sueño",
+                    "FC reposo + HRV nocturno": "Desglose diario de FC y HRV",
+                    "Respiración y SpO2 nocturnos": "Desglose diario y notas clínicas",
+                    "Estrés y Body Battery": "Desglose diario de estrés y Body Battery",
+                    "Actividad": "Desglose diario de actividad y sesiones",
+                }.get(title, "Ver desglose diario y detalles")
+            else:
+                summary_label = {
+                    "Sleep": "Daily sleep breakdown and context",
+                    "Resting HR + Overnight HRV": "Daily resting HR and HRV breakdown",
+                    "Overnight Respiration & SpO2": "Daily respiration and SpO2 breakdown",
+                    "Stress & Body Battery": "Daily stress and Body Battery breakdown",
+                    "Activity": "Daily activity and session breakdown",
+                }.get(title, "View daily breakdown and details")
 
             out.append(
                 f'<details class="collapsible"><summary>{summary_label}</summary>'
@@ -1212,6 +1365,7 @@ def md_to_html(md: str, charts: dict | None = None) -> str:
         out.append("</div></section>")
 
     return "\n".join(out)
+
 
 
 # ---------------------------------------------------------------------------
@@ -1845,6 +1999,19 @@ THEME_JS = """
       filterCards();
     });
   });
+
+  // 3. Language Switcher (Standalone HTML)
+  var lBtn = document.getElementById('lang-btn');
+  if (lBtn) {
+    lBtn.addEventListener('click', function () {
+      var current = document.documentElement.lang || 'en';
+      var next = current === 'es' ? 'en' : 'es';
+      try { localStorage.setItem('biodelta-lang', next); } catch (e) {}
+      var url = new URL(window.location.href);
+      url.searchParams.set('lang', next);
+      window.location.href = url.toString();
+    });
+  }
 })();
 """
 
@@ -1855,10 +2022,7 @@ THEME_BOOT = ("try{var t=localStorage.getItem('biodelta-theme')||localStorage.ge
 
 
 def logo_svg() -> str:
-    """El logo en línea: sin xmlns (el parser de HTML ya lo asume, y una URL de
-    espacio de nombres rompería la promesa de que aquí no hay ninguna URL) y con
-    el trazo en currentColor, así hereda la tinta del tema en vez de necesitar
-    una copia del fichero por cada color. Sin el fichero, no hay logo."""
+    """El logo en línea: sin xmlns y con trazo en currentColor."""
     try:
         svg = (LOGO_DIR / "logo.svg").read_text(encoding="utf-8").strip()
     except OSError:
@@ -1877,62 +2041,75 @@ def favicon_link() -> str:
     return f'<link rel="icon" type="image/png" href="data:image/png;base64,{b64}">\n'
 
 
-def _navbar(title: str, body: str) -> str:
+def _navbar(title: str, body: str, lang: str = "en") -> str:
     """Índice construido con las secciones que ya haya generado el md."""
+    is_es = lang == "es"
     _NAV_LABELS = {
         "FC reposo + HRV nocturno": "FC reposo + HRV",
         "Respiración y SpO2 nocturnos": "Respiración y SpO2",
+        "Resting HR + Overnight HRV": "Resting HR + HRV",
+        "Overnight Respiration & SpO2": "Respiration & SpO2",
+        "Session Breakdown": "Sessions",
+        "Detalle de sesiones": "Sesiones",
     }
     links = "".join(
         f'<a href="#{sid}">{_NAV_LABELS.get(name, name)}</a>'
         for sid, name in re.findall(
             r'<section class="sec" id="([^"]+)">.*?<h2>(.*?)</h2>', body)
     )
+    glossary_lbl = "📖 Glosario" if is_es else "📖 Glossary"
+    print_lbl = "🖨️ Imprimir" if is_es else "🖨️ Print"
+    theme_lbl = "☾ Oscuro" if is_es else "☾ Dark"
+    flag_btn = "🇪🇸 ES" if is_es else "🇬🇧 EN"
+    lang_tip = "Cambiar a inglés" if is_es else "Switch to Spanish"
+
     return (
         '<nav class="topbar"><div class="topbar-in">'
         f'<span class="brand">{_esc(title)}</span>'
         f'<div class="navlinks">{links}</div>'
-        '<button id="glossary-btn" class="nav-btn" type="button" aria-label="Abrir glosario de métricas">📖 Glosario</button>'
-        '<button id="print-btn" class="nav-btn" type="button" onclick="window.print()" aria-label="Imprimir o exportar a PDF">🖨️ Imprimir</button>'
-        '<button id="theme-btn" class="theme-btn" type="button" aria-pressed="false">'
-        '☾ Oscuro</button>'
+        f'<button id="lang-btn" class="nav-btn lang-btn" type="button" title="{_esc(lang_tip)}" aria-label="{_esc(lang_tip)}">{flag_btn}</button>'
+        f'<button id="glossary-btn" class="nav-btn" type="button" aria-label="{glossary_lbl}">{glossary_lbl}</button>'
+        f'<button id="print-btn" class="nav-btn" type="button" onclick="window.print()" aria-label="{print_lbl}">{print_lbl}</button>'
+        f'<button id="theme-btn" class="theme-btn" type="button" aria-pressed="false">{theme_lbl}</button>'
         '</div></nav>'
     )
 
 
 def render(md: str, sleep_rows, stress_map, bb_map, steps_map, start: date, end: date,
            tiles=(), rings=(), baselines=None, intensity_map=None, vo2max=None, race_pred=None,
-           traffic_light=None) -> str:
+           traffic_light=None, lang: str = "en") -> str:
     charts = build_charts(sleep_rows, stress_map, bb_map, steps_map, start, end,
-                          baselines, intensity_map=intensity_map, vo2max=vo2max, race_pred=race_pred)
-    # Semáforo de estado, anillos y cifras se inyectan bajo el `## Resumen`
+                          baselines, intensity_map=intensity_map, vo2max=vo2max, race_pred=race_pred, lang=lang)
+    # Semáforo de estado, anillos y cifras se inyectan bajo el `## Resumen` o `## Summary`
     resumen_parts = []
     if traffic_light:
-        resumen_parts.append(status_card_html(traffic_light))
+        resumen_parts.append(status_card_html(traffic_light, lang=lang))
     if rings:
         resumen_parts.append(rings_html(rings))
     if tiles:
         resumen_parts.append(tiles_html(tiles))
     if resumen_parts:
-        charts["Resumen"] = "".join(resumen_parts)
+        summary_html = "".join(resumen_parts)
+        charts["Resumen"] = summary_html
+        charts["Summary"] = summary_html
 
     title = f"Garmin log {start.isoformat()} – {end.isoformat()}"
-    body = md_to_html(md, charts)
+    body = md_to_html(md, charts, lang=lang)
     body = body.replace("<h1>", f"<h1>{logo_svg()}", 1)
-    # El h1 y su entradilla van antes de la primera sección: son la portada.
     head, _, rest = body.partition('<section class="sec"')
     body = (f'<header class="lede">{head}</header><section class="sec"{rest}'
             if rest else f'<header class="lede">{head}</header>')
     return (
-        '<!doctype html>\n<html lang="es">\n<head>\n<meta charset="utf-8">\n'
+        f'<!doctype html>\n<html lang="{lang}">\n<head>\n<meta charset="utf-8">\n'
         '<meta name="viewport" content="width=device-width, initial-scale=1">\n'
         f'<title>{_esc(title)}</title>\n'
         + favicon_link()
         + f'<style>{CSS}</style>\n'
         f'<script>{THEME_BOOT}</script>\n</head>\n<body>\n'
-        + _navbar(title, body)
+        + _navbar(title, body, lang=lang)
         + '<main class="wrap">\n' + body + '\n</main>\n'
-        + glossary_modal_html()
+        + glossary_modal_html(lang=lang)
         + tooltip_html()
         + f'<script>{THEME_JS}</script>\n</body>\n</html>\n'
     )
+
