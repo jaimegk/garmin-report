@@ -318,6 +318,12 @@ def test_demo_pipeline_end_to_end():
             conn = sqlite3.connect(db)
             md, html = build_report(conn, start, end, demo_data.GENERATED_ON, lang="en")
             md_es, html_es = build_report(conn, start, end, demo_data.GENERATED_ON, lang="es")
+            embedded = build_report(conn, start, end, demo_data.GENERATED_ON,
+                                    lang="en", standalone=False)[1]
+            con_objetivos = build_report(
+                conn, start, end, demo_data.GENERATED_ON, lang="en",
+                goals={"sleep_target_hours": 7.5, "steps_daily_goal": 12000,
+                       "intensity_weekly_goal": 450})[1]
             conn.close()
 
     # Secciones en inglés (por defecto)
@@ -355,8 +361,21 @@ def test_demo_pipeline_end_to_end():
     # El logo va incrustado —SVG en línea, favicon en base64—, no enlazado: si
     # assets/ desaparece el informe se genera igual y nadie se entera.
     assert '<svg class="logo"' in html and 'href="data:image/png;base64,' in html
-    assert "Switch to Spanish" in html
-    assert "Cambiar a inglés" in html_es
+    # Los rótulos de la barra hablan el idioma del informe, no siempre español.
+    assert 'aria-pressed="false">☾ Dark</button>' in html
+    assert 'aria-pressed="false">☾ Oscuro</button>' in html_es
+
+    # Modo incrustado (el panel web): mismo informe, sin barra ni glosario propios,
+    # para que no choque con los del panel.
+    assert embedded.startswith("<!doctype html>")
+    assert '<nav class="topbar"' not in embedded
+    assert 'id="glossary-modal"' not in embedded
+    assert 'id="biodelta-tooltip"' in embedded
+
+    # Los objetivos de los Ajustes llegan al informe.
+    assert "7.5 h goal" in con_objetivos
+    assert "450 min/week goal" in con_objetivos
+    assert "12.000 steps" in con_objetivos
 
 
 def test_title_range_no_repite_lo_que_no_cambia():
@@ -1604,6 +1623,11 @@ def test_compute_health_traffic_light():
     assert "Excelente duración" in tl_opt_es["sleep_diag"]
     assert "preparado" in tl_opt_es["recommendation"].lower()
 
+    # Sin estrés medio la frase no puede quedarse con un punto suelto colgando.
+    sin_estres = {k: v for k, v in cur_opt.items() if k != "stress"}
+    diag = compute_health_traffic_light(sin_estres, base_opt, [], lang="en")["recovery_diag"]
+    assert diag.endswith(".") and " ." not in diag
+
     tl_opt_en = compute_health_traffic_light(cur_opt, base_opt, ["✅ Good week of sleep and recovery."], lang="en")
     assert tl_opt_en["state"] == "optimal"
     assert tl_opt_en["badge"] == "🟢"
@@ -1665,7 +1689,7 @@ def test_status_card_and_glossary_rendering():
 
     g_html_en = glossary_modal_html(lang="en")
     assert "glossary-modal" in g_html_en
-    assert "Health &amp; Metric Glossary" in g_html_en or "Health &amp; Metric" in g_html_en or "Health" in g_html_en
+    assert "Health &amp; Metric Glossary" in g_html_en  # el & va escapado
 
     t_html = tooltip_html()
     assert "biodelta-tooltip" in t_html
@@ -1713,6 +1737,13 @@ def test_app_server_api_and_endpoints():
             assert saved["sleep_target_hours"] == 7.5
             assert app.load_settings()["sleep_target_hours"] == 7.5
 
+            # 1b. Los ajustes llegan por HTTP: valores absurdos no se guardan.
+            app.save_settings({"sleep_target_hours": 99, "steps_daily_goal": "muchos",
+                               "intensity_weekly_goal": 450})
+            st = app.load_settings()
+            assert st["sleep_target_hours"] == 7.5 and st["steps_daily_goal"] == 10000
+            assert st["intensity_weekly_goal"] == 450
+
             # 2. get_db_date_range & get_available_weeks
             min_d, max_d = app.get_db_date_range(tmp_db)
             assert min_d is not None and max_d is not None
@@ -1748,6 +1779,13 @@ def test_app_server_api_and_endpoints():
                             handler.sent_body = data
                     return WFile()
 
+            # 4b. Una web ajena no puede pilotar el servidor local.
+            h_cors = DummyHandler()
+            h_cors.path = "/api/status"
+            h_cors.headers = {"Origin": "https://evil.example"}
+            h_cors.do_GET()
+            assert h_cors.sent_status == 403
+
             # GET /api/status
             h = DummyHandler()
             h.path = "/api/status"
@@ -1773,8 +1811,10 @@ def test_app_server_api_and_endpoints():
             h_rep.handle_get_report({"demo": ["1"]})
             res_rep = json.loads(h_rep.sent_body.decode())
             assert res_rep["status"] == "ok"
+            # El panel lo monta en un iframe: documento entero, pero sin la barra
+            # ni el glosario del informe suelto (el panel ya pone los suyos).
             assert "<!doctype html>" in res_rep["html"]
-            assert "traffic_light" in res_rep
+            assert '<nav class="topbar"' not in res_rep["html"]
 
             # GET /api/demo
             h_demo = DummyHandler()

@@ -10,13 +10,18 @@ _**English** · [Español](README.es.md)_
 [![Tests](https://github.com/jaimegk/biodelta/actions/workflows/tests.yml/badge.svg)](https://github.com/jaimegk/biodelta/actions/workflows/tests.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
-Turn your [Garmin Connect](https://connect.garmin.com) data into a weekly health report and interactive dashboard that tells you **what deserves attention** — not just what happened.
+Turn your [Garmin Connect](https://connect.garmin.com) data into a weekly health report and
+an interactive dashboard that tell you **what deserves attention** — not just what happened.
 
-Every metric is compared against **your own average over the previous ~4 weeks** (not against population norms), and that comparison drives automatic **signals and diagnostics**: health traffic light, resting heart rate up for several days in a row, HRV out of your normal band, short nights, irregular bedtimes, and high stress.
+Every metric is compared against **your own average over the previous ~4 weeks** (not against
+population norms), and that comparison drives automatic **signals and diagnostics**: a health
+traffic light, resting heart rate up for several days in a row, HRV out of your normal band,
+short nights, irregular bedtimes and high stress.
 
 Everything runs 100% locally. Your credentials and your health data never leave your machine.
 
-> The report itself is written in Spanish. The code, the docs and this README are in English.
+> The report is available in English and Spanish (`--lang en|es`, or the flag switcher in the
+> dashboard). The code comments are in Spanish; the docs and this README are in English.
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/screenshot-dark.png">
@@ -36,7 +41,8 @@ You can use BioDelta without touching the terminal or configuring environments:
   ```
 - **Windows:** Double-click `iniciar.bat`.
 
-The launcher will automatically set up the virtual environment and open BioDelta in your web browser at `http://localhost:8000`.
+The launcher sets up the virtual environment on first run and opens BioDelta in your browser
+at `http://localhost:8000`.
 
 ### Try it in 30 seconds (no Garmin account needed)
 
@@ -46,21 +52,30 @@ cd biodelta
 ./iniciar.sh
 ```
 
-When the app opens, click **✨ Demo Mode** to explore a complete 6-week report with synthetic data and all signals active.
+When the app opens, click **✨ Demo** to explore a full six-week report built from synthetic
+data, with every signal active. No account, no credentials, no network.
 
 ## What makes it different
 
-**Health Traffic Light & Human Diagnostics.** Opens with an executive summary (🟢 Optimal / 🟡 Warning / 🔴 Recovery Needed) and 3 plain-language diagnosis sentences covering Sleep duration & regularity, Autonomic recovery & stress, and Actionable advice.
+**Health traffic light and plain-language diagnosis.** The report opens with an executive
+summary (🟢 Optimal / 🟡 Attention needed / 🔴 Recovery needed) and three sentences in plain
+language: sleep duration and regularity, autonomic recovery and stress, and what to do today.
 
-**Local Web Dashboard & Time Travel.** Seamlessly jump between weeks (`◀` / `▶`), drag-and-drop SQLite databases (`garmin_data.db`), or sync directly with Garmin Connect with full **two-factor authentication (2FA/MFA)** support.
+**Local web dashboard and time travel.** Jump between weeks (`◀` / `▶`), drag and drop a
+`garmin_data.db` file, or sync straight from Garmin Connect with **two-factor authentication
+(2FA/MFA)** support. The server binds to `127.0.0.1` and only accepts requests from itself.
 
-**Interactive Metric Glossary.** Integrated `📖 Glosario` button with clear, evidence-based definitions for every metric (SRI, ACWR, RMSSD, Aerobic Decoupling, VO2max, etc.).
+**Interactive metric glossary.** A `📖 Glossary` button with a clear, evidence-based
+definition of every metric (SRI, ACWR, RMSSD, aerobic decoupling, VO2max…).
 
-**Synchronized & Interactive Charts.** Hover over any day to see exact readings and highlight the same day simultaneously across all weekly charts.
+**Synchronized charts.** Hover over any day to read its exact values and highlight that same
+day across every chart of the week at once.
 
-**Your baseline, not the population's.** "49 bpm" means nothing on its own; "49 bpm when yours is 46, three days running" does.
+**Your baseline, not the population's.** "49 bpm" means nothing on its own; "49 bpm when
+yours is 46, three days running" does.
 
-**Both charts tell the same story.** When resting heart rate climbs, HRV drops — the report shows them side by side instead of leaving you to cross-reference tables.
+**Both charts tell the same story.** When resting heart rate climbs, HRV drops — the report
+shows them side by side instead of leaving you to cross-reference tables.
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/screenshot-charts-dark.png">
@@ -118,8 +133,18 @@ python generate_report.py --start-date 2026-05-01 --end-date 2026-05-31
 # Example report built from synthetic data
 python generate_report.py --demo
 
+# Report in Spanish (English is the default)
+python generate_report.py --lang es
+
 # Inspect the database schema (tables and columns)
 python generate_report.py --inspect-schema
+```
+
+Or run the local dashboard, which does all of the above from the browser:
+
+```bash
+python app.py                 # http://localhost:8000, opens the browser
+python app.py --port 9000 --no-browser
 ```
 
 ### The HTML version
@@ -127,8 +152,9 @@ python generate_report.py --inspect-schema
 Every run also writes an `.html` next to the `.md`: formatted tables, the card header, and
 **charts for sleep stages, resting heart rate, HRV, stress over Body Battery, and daily steps**.
 
-It opens with a double click — a single self-contained file with no JavaScript and no external
-resources, so it works offline and travels well to a phone. It follows the system light/dark
+It opens with a double click — a single self-contained file with no external resources (the
+only JavaScript is the theme switch, the glossary and the chart tooltips), so it works offline
+and travels well to a phone. It follows the system light/dark
 theme, and hovering a bar or a point shows its exact value.
 
 ## What's in the report

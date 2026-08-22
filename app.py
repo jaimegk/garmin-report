@@ -20,12 +20,7 @@ Endpoints principales:
   POST /api/settings         -> Guarda objetivos y preferencias locales
 """
 
-import cgi
-import io
 import json
-import os
-import re
-import shutil
 import sqlite3
 import sys
 import threading
@@ -48,6 +43,12 @@ DB_PATH = PROJECT_DIR / "garmin_data.db"
 DEMO_DB_PATH = PROJECT_DIR / "output" / "demo.db"
 SETTINGS_PATH = PROJECT_DIR / "settings.json"
 
+# Tope de la subida por drag & drop: una BD de años de histórico ronda las
+# decenas de MB, y el cuerpo entero se lee en memoria.
+MAX_UPLOAD_BYTES = 256 * 1024 * 1024
+# Una sesión 2FA a medias guarda un cliente de Garmin en memoria: se caduca sola.
+MFA_SESSION_TTL_S = 600
+
 # Estado global en memoria para sincronización en segundo plano y sesiones 2FA
 _sync_state = {
     "status": "idle",       # "idle", "running", "completed", "error"
@@ -67,7 +68,7 @@ def load_settings() -> dict:
     defaults = {
         "sleep_target_hours": 8.0,
         "steps_daily_goal": 10000,
-        "intensity_weekly_goal": 150,
+        "intensity_weekly_goal": 300,
         "theme": "light",
         "language": "en",
     }
@@ -80,13 +81,35 @@ def load_settings() -> dict:
     return defaults
 
 
+# Rango admitido de cada objetivo numérico: fuera de él el valor se ignora.
+_GOAL_LIMITS = {
+    "sleep_target_hours": (float, 4.0, 12.0),
+    "steps_daily_goal": (int, 1000, 100000),
+    "intensity_weekly_goal": (int, 30, 2000),
+}
+
+
 def save_settings(data: dict) -> dict:
     current = load_settings()
-    for k in ("sleep_target_hours", "steps_daily_goal", "intensity_weekly_goal", "theme", "language"):
+    for k, (cast, lo, hi) in _GOAL_LIMITS.items():
         if k in data:
+            try:
+                v = cast(data[k])
+            except (TypeError, ValueError):
+                continue
+            if lo <= v <= hi:
+                current[k] = v
+    for k in ("theme", "language"):
+        if isinstance(data.get(k), str):
             current[k] = data[k]
     SETTINGS_PATH.write_text(json.dumps(current, indent=2, ensure_ascii=False), encoding="utf-8")
     return current
+
+
+def report_goals() -> dict:
+    """Objetivos personales que el informe usa (los Ajustes del panel)."""
+    st = load_settings()
+    return {k: st[k] for k in ("sleep_target_hours", "steps_daily_goal", "intensity_weekly_goal") if k in st}
 
 
 def get_db_date_range(db_file: Path) -> tuple[date | None, date | None]:
@@ -157,6 +180,14 @@ def check_garmin_auth() -> bool:
     return False
 
 
+def _purge_mfa_sessions():
+    """Tira las sesiones 2FA que nadie completó."""
+    cutoff = time.time() - MFA_SESSION_TTL_S
+    with _mfa_lock:
+        for sid in [k for k, v in _mfa_sessions.items() if v["created_at"] < cutoff]:
+            del _mfa_sessions[sid]
+
+
 class BioDeltaRequestHandler(BaseHTTPRequestHandler):
     server_version = "BioDeltaServer/1.0"
 
@@ -165,7 +196,6 @@ class BioDeltaRequestHandler(BaseHTTPRequestHandler):
         self.send_response(status)
         self.send_header("Content-Type", "application/json; charset=utf-8")
         self.send_header("Content-Length", str(len(body)))
-        self.send_header("Access-Control-Allow-Origin", "*")
         self.send_header("Cache-Control", "no-cache, no-store, must-revalidate")
         self.end_headers()
         self.wfile.write(body)
@@ -175,7 +205,6 @@ class BioDeltaRequestHandler(BaseHTTPRequestHandler):
         self.send_response(status)
         self.send_header("Content-Type", "text/html; charset=utf-8")
         self.send_header("Content-Length", str(len(body)))
-        self.send_header("Access-Control-Allow-Origin", "*")
         self.end_headers()
         self.wfile.write(body)
 
@@ -187,18 +216,27 @@ class BioDeltaRequestHandler(BaseHTTPRequestHandler):
         self.send_response(200)
         self.send_header("Content-Type", content_type)
         self.send_header("Content-Length", str(len(data)))
-        self.send_header("Access-Control-Allow-Origin", "*")
         self.end_headers()
         self.wfile.write(data)
 
-    def do_OPTIONS(self):
-        self.send_response(204)
-        self.send_header("Access-Control-Allow-Origin", "*")
-        self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
-        self.send_header("Access-Control-Allow-Headers", "Content-Type, Authorization")
-        self.end_headers()
+    def _same_origin(self) -> bool:
+        """Rechaza peticiones nacidas en otra web.
+
+        El servidor escucha en 127.0.0.1, pero cualquier página abierta en el
+        navegador puede llegar hasta aquí. Sin CORS no puede leer la respuesta,
+        y este filtro impide además que dispare una sincronización o sobrescriba
+        la base de datos a espaldas del usuario.
+        """
+        origin = self.headers.get("Origin")
+        if origin is None:
+            return True  # navegación directa o cliente sin navegador (curl, tests)
+        host = urlparse(origin).hostname
+        return host in ("localhost", "127.0.0.1", "::1")
 
     def do_GET(self):
+        if not self._same_origin():
+            self.send_error(403, "Forbidden")
+            return
         parsed = urlparse(self.path)
         path = parsed.path
         query = parse_qs(parsed.query)
@@ -284,9 +322,16 @@ class BioDeltaRequestHandler(BaseHTTPRequestHandler):
         parsed = urlparse(self.path)
         path = parsed.path
 
+        if not self._same_origin():
+            self._send_json({"status": "error", "message": "Origen no permitido."}, 403)
+            return
+
         # Parsear cuerpo JSON o Multipart
         content_type = self.headers.get("Content-Type", "")
         content_len = int(self.headers.get("Content-Length", 0))
+        if content_len > MAX_UPLOAD_BYTES:
+            self._send_json({"status": "error", "message": "El archivo supera el tamaño máximo admitido."}, 413)
+            return
         body = self.rfile.read(content_len) if content_len > 0 else b""
 
         post_data = {}
@@ -404,16 +449,12 @@ class BioDeltaRequestHandler(BaseHTTPRequestHandler):
 
         try:
             conn = sqlite3.connect(target_db)
-            md, html_content = generate_report.build_report(conn, start, end, generated_on, notice, lang=lang)
-            
-            tz_min = generate_report.tz_offset_minutes(conn)
-            cur_stats = generate_report.metric_stats(conn, start, end, tz_min)
-            b_start, b_end = generate_report.baseline_range(start, generate_report.BASELINE_WEEKS)
-            base_stats = generate_report.metric_stats(conn, b_start, b_end, tz_min)
-            sleep_rows = generate_report.query_sleep(conn, start, end)
-            flags = generate_report.compute_flags(sleep_rows, cur_stats, base_stats, lang=lang)
-            traffic_light = generate_report.compute_health_traffic_light(cur_stats, base_stats, flags, sleep_rows, lang=lang)
-            conn.close()
+            try:
+                _md, html_content = generate_report.build_report(
+                    conn, start, end, generated_on, notice, lang=lang,
+                    goals=report_goals(), standalone=False)
+            finally:
+                conn.close()
 
             prev_start = start - timedelta(days=7)
             prev_end = end - timedelta(days=7)
@@ -426,12 +467,9 @@ class BioDeltaRequestHandler(BaseHTTPRequestHandler):
                 "start": start.isoformat(),
                 "end": end.isoformat(),
                 "title": generate_report.title_range(start, end, lang=lang),
-                "traffic_light": traffic_light,
-                "flags": flags,
                 "prev_week": {"start": prev_start.isoformat(), "end": prev_end.isoformat()},
                 "next_week": {"start": next_start.isoformat(), "end": next_end.isoformat()},
                 "html": html_content,
-                "markdown": md,
             })
         except Exception as e:
             self._send_json({"status": "error", "message": f"Error al generar informe: {str(e)}"}, 500)
@@ -443,8 +481,12 @@ class BioDeltaRequestHandler(BaseHTTPRequestHandler):
         start, end = demo_data.build(DEMO_DB_PATH)
         conn = sqlite3.connect(DEMO_DB_PATH)
         notice = "Sample report with synthetic data: does not correspond to any real person." if lang == "en" else "Informe de ejemplo con datos sintéticos: no corresponde a ninguna persona real."
-        md, html_content = generate_report.build_report(conn, start, end, demo_data.GENERATED_ON, notice, lang=lang)
-        conn.close()
+        try:
+            _md, html_content = generate_report.build_report(
+                conn, start, end, demo_data.GENERATED_ON, notice, lang=lang,
+                goals=report_goals(), standalone=False)
+        finally:
+            conn.close()
 
         msg = "Demo environment generated successfully" if lang == "en" else "Entorno de demostración generado con éxito"
         self._send_json({
@@ -476,7 +518,6 @@ class BioDeltaRequestHandler(BaseHTTPRequestHandler):
         end_d = generate_report.parse_date(end_str) if end_str else None
 
         def run_background_sync():
-            global _sync_state
             try:
                 with _sync_lock:
                     _sync_state["message"] = "Conectando con Garmin Connect y extrayendo métricas..."
@@ -510,6 +551,7 @@ class BioDeltaRequestHandler(BaseHTTPRequestHandler):
             self._send_json({"status": "error", "message": "Librería garmin-health-data no instalada en el entorno."}, 500)
             return
 
+        _purge_mfa_sessions()
         try:
             client = GarminClient()
             login_result = client.login(email, password, return_on_mfa=True)
@@ -546,6 +588,7 @@ class BioDeltaRequestHandler(BaseHTTPRequestHandler):
             self._send_json({"status": "error", "message": "Se requiere session_id y código 2FA."}, 400)
             return
 
+        _purge_mfa_sessions()
         with _mfa_lock:
             session = _mfa_sessions.pop(session_id, None)
 
@@ -588,7 +631,10 @@ class BioDeltaRequestHandler(BaseHTTPRequestHandler):
         """Maneja la subida directa de archivos SQLite garmin_data.db mediante drag & drop."""
         try:
             if "multipart/form-data" in content_type:
-                boundary = content_type.split("boundary=")[1].encode()
+                if "boundary=" not in content_type:
+                    self._send_json({"status": "error", "message": "Petición multipart sin boundary."}, 400)
+                    return
+                boundary = content_type.split("boundary=")[1].strip('"').encode()
                 parts = raw_body.split(b"--" + boundary)
                 file_bytes = None
                 for part in parts:
@@ -606,6 +652,10 @@ class BioDeltaRequestHandler(BaseHTTPRequestHandler):
                 self._send_json({"status": "error", "message": "El archivo subido no es una base de datos SQLite válida de Garmin."}, 400)
                 return
 
+            # La BD anterior se guarda: subir el archivo equivocado no debe
+            # llevarse por delante el histórico ya sincronizado.
+            if DB_PATH.exists():
+                DB_PATH.replace(DB_PATH.with_suffix(".db.bak"))
             DB_PATH.write_bytes(file_bytes)
             min_d, max_d = get_db_date_range(DB_PATH)
             self._send_json({

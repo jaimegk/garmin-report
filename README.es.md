@@ -7,11 +7,16 @@
 
 _[English](README.md) · **Español**_
 
-Convierte tus datos de [Garmin Connect](https://connect.garmin.com) en un informe semanal y panel interactivo que te dice **qué merece atención**, no solo qué pasó.
+Convierte tus datos de [Garmin Connect](https://connect.garmin.com) en un informe semanal y un
+panel interactivo que te dicen **qué merece atención**, no solo qué pasó.
 
-Cada métrica se compara con **tu propia media de las ~4 semanas previas** — no con la media de la población — y de ahí salen **señales y diagnósticos automáticos**: semáforo de estado de salud, FC en reposo elevada varios días seguidos, HRV fuera de tu rango normal, noches cortas, horarios irregulares y estrés alto.
+Cada métrica se compara con **tu propia media de las ~4 semanas previas** — no con la media
+de la población — y de ahí salen **señales y diagnósticos automáticos**: semáforo de estado,
+FC en reposo elevada varios días seguidos, HRV fuera de tu rango normal, noches cortas,
+horarios irregulares y estrés alto.
 
 Todo corre 100% en local: tus credenciales y tus datos de salud nunca salen de tu ordenador.
+El informe se genera en español o en inglés (`--lang es|en`, o la bandera del panel).
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/screenshot-dark.png">
@@ -31,7 +36,8 @@ Puedes usar BioDelta sin escribir código ni configurar entornos manualmente:
   ```
 - **Windows:** Haz doble clic en `iniciar.bat`.
 
-El lanzador configurará automáticamente el entorno virtual y abrirá BioDelta en tu navegador web en `http://localhost:8000`.
+El lanzador prepara el entorno virtual la primera vez y abre BioDelta en tu navegador en
+`http://localhost:8000`.
 
 ### Probar en 30 segundos (sin cuenta de Garmin)
 
@@ -41,21 +47,30 @@ cd biodelta
 ./iniciar.sh
 ```
 
-Al abrir la aplicación, pulsa en **✨ Modo Demo** para explorar un informe completo de 6 semanas con datos sintéticos y todas las señales activas.
+Al abrir la aplicación, pulsa **✨ Demo** para explorar un informe completo de seis semanas con
+datos sintéticos y todas las señales activas. Sin cuenta, sin credenciales y sin conexión.
 
 ## Qué lo hace distinto
 
-**Semáforo de Estado y Diagnóstico Humano.** Abre con una evaluación ejecutiva (🟢 Óptimo / 🟡 Atención / 🔴 Descanso necesario) y 3 frases en lenguaje natural sobre sueño, recuperación del sistema nervioso y recomendaciones prácticas.
+**Semáforo de estado y diagnóstico en lenguaje llano.** El informe abre con una evaluación
+(🟢 Óptimo / 🟡 Atención requerida / 🔴 Descanso necesario) y tres frases: duración y
+regularidad del sueño, recuperación autonómica y estrés, y qué hacer hoy.
 
-**Panel Web Local y Viaje en el Tiempo.** Navega fácilmente entre semanas (`◀` / `▶`), arrastra archivos de base de datos (`garmin_data.db`) o sincroniza directamente con tu cuenta de Garmin con soporte para **verificación en dos pasos (2FA/MFA)**.
+**Panel web local y viaje en el tiempo.** Navega entre semanas (`◀` / `▶`), arrastra un
+`garmin_data.db` o sincroniza con tu cuenta de Garmin, con **verificación en dos pasos
+(2FA/MFA)**. El servidor escucha en `127.0.0.1` y solo atiende peticiones nacidas en él.
 
-**Glosario Educativo Integrado.** Botón `📖 Glosario` con explicaciones directas y comprensibles para cada métrica (SRI, ACWR, RMSSD, Desacoplamiento aeróbico, VO2máx, etc.).
+**Glosario integrado.** Un botón `📖 Glosario` con una explicación clara y basada en
+evidencia de cada métrica (SRI, ACWR, RMSSD, desacoplamiento aeróbico, VO2máx…).
 
-**Gráficas interactivas y sincronizadas.** Pasa el ratón sobre cualquier día para ver sus valores exactos y resaltarlo automáticamente en todas las gráficas de la semana.
+**Gráficas sincronizadas.** Pasa el ratón sobre cualquier día para ver sus valores exactos y
+resaltar ese mismo día en todas las gráficas de la semana a la vez.
 
-**Tu línea base, no la de la población.** «49 bpm» no significa nada por sí solo; «49 bpm cuando lo tuyo son 46, tres días seguidos» sí.
+**Tu línea base, no la de la población.** «49 bpm» no significa nada por sí solo; «49 bpm
+cuando lo tuyo son 46, tres días seguidos» sí.
 
-**Las dos gráficas cuentan la misma historia.** Cuando la FC en reposo sube, el HRV baja: el informe lo enseña en paralelo en vez de dejarte cruzar tablas.
+**Las dos gráficas cuentan la misma historia.** Cuando la FC en reposo sube, el HRV baja: el
+informe lo enseña en paralelo en vez de dejarte cruzar tablas.
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/screenshot-charts-dark.png">
@@ -113,8 +128,18 @@ python generate_report.py --start-date 2026-05-01 --end-date 2026-05-31
 # Informe de ejemplo con datos sintéticos
 python generate_report.py --demo
 
+# Informe en español (por defecto sale en inglés)
+python generate_report.py --lang es
+
 # Inspeccionar el esquema de la BD (tablas y columnas)
 python generate_report.py --inspect-schema
+```
+
+O levanta el panel local, que hace todo lo anterior desde el navegador:
+
+```bash
+python app.py                 # http://localhost:8000, abre el navegador
+python app.py --port 9000 --no-browser
 ```
 
 ### Versión HTML
@@ -123,7 +148,8 @@ Cada ejecución escribe además un `.html` con el mismo nombre: las tablas ya fo
 cabecera de tarjetas y **gráficas de fases del sueño, FC en reposo, HRV, estrés sobre Body
 Battery y pasos diarios**.
 
-Se abre con doble clic: es un fichero autocontenido, sin JavaScript ni recursos externos, así
+Se abre con doble clic: es un fichero autocontenido, sin recursos externos (el único
+JavaScript es el del tema, el glosario y los tooltips de las gráficas), así
 que funciona offline y también sirve para mandártelo al móvil. Se adapta al tema claro/oscuro
 del sistema, y al pasar el ratón sobre una barra o un punto se ve su valor exacto.
 

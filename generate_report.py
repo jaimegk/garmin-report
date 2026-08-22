@@ -39,15 +39,13 @@ DAYS = {
     "en": ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"],
     "es": ["Lun", "Mar", "Mié", "Jue", "Vie", "Sáb", "Dom"],
 }
-DAYS_ES = DAYS["es"]
 
 MONTHS_SHORT = {
     "en": ["", "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"],
     "es": ["", "ene", "feb", "mar", "abr", "may", "jun", "jul", "ago", "sep", "oct", "nov", "dic"],
 }
-MONTHS_ES = MONTHS_SHORT["es"]
 
-# Abreviado en tablas y etiquetas, entero en el titular
+# Abreviado en tablas y etiquetas, entero en el titular: ahí sobra sitio.
 MONTHS_LONG = {
     "en": ["", "January", "February", "March", "April", "May", "June",
            "July", "August", "September", "October", "November", "December"],
@@ -97,7 +95,7 @@ ACTIVITY_LABELS = {
 INTENSITY_TARGET_MIN = 150
 INTENSITY_TARGET_MAX = 300
 
-# Estado de HRV nocturno (Garmin) → etiqueta multilingüe
+# Estado de HRV nocturno (Garmin) → etiqueta legible
 HRV_STATUS_MAP = {
     "en": {
         "BALANCED": "balanced",
@@ -114,7 +112,6 @@ HRV_STATUS_MAP = {
         "NONE": "sin datos",
     }
 }
-HRV_STATUS_ES = HRV_STATUS_MAP["es"]
 
 # Fila de sueño con acceso por nombre (evita errores de índice al ampliar columnas).
 SleepNight = namedtuple("SleepNight", [
@@ -143,7 +140,6 @@ TE_LABELS_MAP = {
         "SPRINT": "sprint", "UNKNOWN": "–",
     }
 }
-TE_LABELS_ES = TE_LABELS_MAP["es"]
 
 
 # ---------------------------------------------------------------------------
@@ -1091,7 +1087,10 @@ def iso_weeks_in_range(start: date, end: date) -> list:
 
 
 def compute_flags(sleep_rows: list, cur_stats: dict, base_stats: dict, act_detail: list | None = None, lang: str = "en") -> list[str]:
-    """Reglas simples sobre los datos para resaltar lo que merece atención."""
+    """Reglas simples sobre los datos para resaltar lo que merece atención.
+
+    sleep_rows: lista de SleepNight del periodo, ordenadas por fecha.
+    """
     flags: list[str] = []
     have_base = base_stats.get("n_nights", 0) >= 5
     is_es = lang == "es"
@@ -1208,7 +1207,7 @@ def compute_flags(sleep_rows: list, cur_stats: dict, base_stats: dict, act_detai
                 f"✅ Training load in optimal range (ACWR {acwr:.2f}) — progressive and safe stimulus."
             )
 
-    # 8. Minutos de intensidad frente a la guía OMS
+    # 8. Minutos de intensidad frente a la guía OMS (150–300 equivalentes/semana)
     im = cur_stats.get("intensity_week")
     if im is not None:
         if im < INTENSITY_TARGET_MIN:
@@ -1224,7 +1223,9 @@ def compute_flags(sleep_rows: list, cur_stats: dict, base_stats: dict, act_detai
                 f"✅ Physical activity in healthy range: {round(im)} intensity min (goal {INTENSITY_TARGET_MIN}–{INTENSITY_TARGET_MAX})."
             )
 
-    # 9. SpO2 nocturna media baja
+    # 9. SpO2 nocturna MEDIA baja varias noches (cribado, no diagnóstico).
+    # Usamos la media, no el mínimo: caídas puntuales a 85-89% son normales en
+    # gente sana; lo relevante es una saturación media sostenidamente baja.
     low_spo2 = sum(1 for n in sleep_rows if n.spo2_avg is not None and n.spo2_avg < 92)
     if low_spo2 >= 3:
         flags.append(
@@ -1233,7 +1234,7 @@ def compute_flags(sleep_rows: list, cur_stats: dict, base_stats: dict, act_detai
             f"⚠️ Average overnight SpO2 below 92% across {low_spo2} nights — indicative screening signal (e.g. sleep apnea); consult a physician."
         )
 
-    # 10. Desviación de frecuencia respiratoria nocturna
+    # 10. Desviación de frecuencia respiratoria nocturna (alerta precoz de infección / estrés)
     if have_base and base_stats.get("resp_avg") and cur_stats.get("resp_avg"):
         if cur_stats["resp_avg"] >= base_stats["resp_avg"] + 1.0:
             delta = cur_stats["resp_avg"] - base_stats["resp_avg"]
@@ -1271,7 +1272,7 @@ def compute_flags(sleep_rows: list, cur_stats: dict, base_stats: dict, act_detai
                     )
                 break
 
-    # 12. VO2máx ausente
+    # 12. VO2máx ausente: recordatorio de cómo activarlo
     if cur_stats.get("vo2max") is None:
         flags.append(
             "ℹ️ Sin VO2máx (el predictor de longevidad más potente): el FR165 lo estima con carreras o caminatas al aire libre con GPS; las sesiones indoor, en cinta o de natación no lo generan."
@@ -1324,7 +1325,13 @@ def _sum_reg(v):
 
 
 def get_summary_specs(lang: str = "en") -> list[tuple]:
-    """Métricas del Resumen según idioma."""
+    """Métricas del Resumen: (etiqueta, clave en metric_stats, formateador, unidad,
+    es_duración, dirección buena). Única fuente para las tres variantes de tabla
+    (semanal, sin histórico, multi-semana) y para las tarjetas del HTML.
+
+    La dirección no se puede deducir del signo de la tendencia: subir es malo en FC
+    en reposo y bueno en VO2máx. None = ni bueno ni malo por sí solo.
+    """
     if lang == "es":
         return [
             ("Sueño",                   "sleep_s",        _sum_dur,                       "",     True,  "up"),
@@ -1354,10 +1361,12 @@ def get_summary_specs(lang: str = "en") -> list[tuple]:
     ]
 
 
-SUMMARY_SPECS = get_summary_specs("es")
 
-
-# Anillos del resumen
+# Anillos del resumen. Garmin no da una nota de recuperación en la BD, así que
+# se estima aquí desde cuánto se desvían HRV y FC en reposo de TU media, con la
+# HRV pesando más (es la señal autonómica que antes se mueve). Los coeficientes
+# son una calibración, no una ley: RECOVERY_CENTER es la nota de una semana
+# idéntica a tu media, y las ganancias, cuántos puntos cuesta desviarse.
 RECOVERY_CENTER = 65
 RECOVERY_HRV_GAIN = 250   # puntos por cada 100 % de desviación de la HRV
 RECOVERY_RHR_GAIN = 8     # puntos por cada bpm sobre tu media
@@ -1369,7 +1378,11 @@ def _clamp100(v: float) -> float:
 
 
 def recovery_score(cur_stats: dict, base_stats: dict) -> float | None:
-    """Nota 0–100 de recuperación. None si no hay histórico con el que comparar."""
+    """Nota 0–100 de recuperación. None si no hay histórico con el que comparar.
+
+    Cada componente se acota a 0–100 antes de mezclarse: una HRV disparada no
+    debe compensar una FC en reposo por las nubes.
+    """
     if base_stats.get("n_nights", 0) < 5:
         return None
     parts = []
@@ -1511,8 +1524,8 @@ def compute_health_traffic_light(cur_stats: dict, base_stats: dict, flags: list[
             else:
                 rec_parts.append(f"with moderate daily stress ({round(stress_cur)}/100).")
     else:
-        rec_parts.append(".")
-    recovery_diag = " ".join(rec_parts)
+        rec_parts.append("")
+    recovery_diag = " ".join(p for p in rec_parts if p).rstrip(".") + "."
 
     # 4. Recomendación Práctica
     if state == "optimal":
@@ -1558,63 +1571,72 @@ def _band(value, good, warn) -> str:
     return "good" if value >= good else "warn" if value >= warn else "bad"
 
 
-def summary_rings(cur_stats: dict, base_stats: dict, intensity_target: int = INTENSITY_TARGET_MIN, lang: str = "en") -> list[tuple]:
-    """(etiqueta, fracción 0–1, valor, detalle, estado) de fuera a dentro."""
+def summary_rings(cur_stats: dict, base_stats: dict, lang: str = "en",
+                  goals: dict | None = None) -> list[tuple]:
+    """(etiqueta, fracción 0–1, valor, detalle, estado) de fuera a dentro.
+
+    Tres anillos concéntricos con lo que resume una semana: cuánto te has
+    movido, cuánto has dormido y cómo has recuperado. Cada fracción es
+    "lo logrado / el objetivo", así que el anillo lleno significa lo mismo
+    en los tres aunque las unidades no tengan nada que ver.
+
+    Los objetivos de sueño y de minutos de intensidad salen de los Ajustes; los
+    umbrales de color (`_band`) no: esos son referencias de salud, no preferencias.
+    """
+    g = goals or {}
+    sleep_target_s = int(float(g.get("sleep_target_hours") or SLEEP_TARGET_S / 3600) * 3600)
+    im_goal = int(g.get("intensity_weekly_goal") or INTENSITY_TARGET_MAX)
     im = cur_stats.get("intensity_week")
     sleep_s = cur_stats.get("sleep_s")
     rec = recovery_score(cur_stats, base_stats)
-    is_es = lang == "es"
+    sleep_h = f"{sleep_target_s / 3600:g}"
 
-    if is_es:
-        sleep_detail = f"Media por noche · objetivo {SLEEP_TARGET_S // 3600} h"
+    if lang == "es":
+        labels = ("Actividad", "Sueño", "Recuperación")
+        im_detail = (f"Minutos de intensidad · objetivo {im_goal} min/semana "
+                     f"(guía OMS {INTENSITY_TARGET_MIN}–{INTENSITY_TARGET_MAX})")
+        sleep_detail = f"Media por noche · objetivo {sleep_h} h"
         rec_detail = ("Sin histórico suficiente para comparar HRV y FC en reposo" if rec is None
                       else "HRV nocturno y FC en reposo frente a tu media de las semanas anteriores")
-        return [
-            ("Actividad",
-             (im / INTENSITY_TARGET_MAX) if im is not None else None,
-             f"{round(im)} min" if im is not None else "–",
-             f"Minutos de intensidad · objetivo OMS {INTENSITY_TARGET_MIN}–{INTENSITY_TARGET_MAX} por semana",
-             _band(im, INTENSITY_TARGET_MIN, INTENSITY_TARGET_MIN / 2)),
-            ("Sueño",
-             (sleep_s / SLEEP_TARGET_S) if sleep_s else None,
-             _sum_dur(sleep_s),
-             sleep_detail,
-             _band(sleep_s, 7 * 3600, 6 * 3600)),
-            ("Recuperación",
-             (rec / 100) if rec is not None else None,
-             f"{round(rec)}" if rec is not None else "–",
-             rec_detail,
-             _band(rec, 67, 34)),
-        ]
     else:
-        sleep_detail = f"Nightly average · {SLEEP_TARGET_S // 3600} h goal"
+        labels = ("Activity", "Sleep", "Recovery")
+        im_detail = (f"Intensity minutes · {im_goal} min/week goal "
+                     f"(WHO guidance {INTENSITY_TARGET_MIN}–{INTENSITY_TARGET_MAX})")
+        sleep_detail = f"Nightly average · {sleep_h} h goal"
         rec_detail = ("Insufficient baseline history to compare HRV and resting HR" if rec is None
                       else "Overnight HRV and resting HR vs. your previous weeks' average")
-        return [
-            ("Activity",
-             (im / INTENSITY_TARGET_MAX) if im is not None else None,
-             f"{round(im)} min" if im is not None else "–",
-             f"Intensity minutes · WHO goal {INTENSITY_TARGET_MIN}–{INTENSITY_TARGET_MAX} per week",
-             _band(im, INTENSITY_TARGET_MIN, INTENSITY_TARGET_MIN / 2)),
-            ("Sleep",
-             (sleep_s / SLEEP_TARGET_S) if sleep_s else None,
-             _sum_dur(sleep_s),
-             sleep_detail,
-             _band(sleep_s, 7 * 3600, 6 * 3600)),
-            ("Recovery",
-             (rec / 100) if rec is not None else None,
-             f"{round(rec)}" if rec is not None else "–",
-             rec_detail,
-             _band(rec, 67, 34)),
-        ]
+
+    return [
+        (labels[0],
+         (im / im_goal) if im is not None else None,
+         f"{round(im)} min" if im is not None else "–",
+         im_detail,
+         _band(im, INTENSITY_TARGET_MIN, INTENSITY_TARGET_MIN / 2)),
+        (labels[1],
+         (sleep_s / sleep_target_s) if sleep_s else None,
+         _sum_dur(sleep_s),
+         sleep_detail,
+         _band(sleep_s, 7 * 3600, 6 * 3600)),
+        (labels[2],
+         (rec / 100) if rec is not None else None,
+         f"{round(rec)}" if rec is not None else "–",
+         rec_detail,
+         _band(rec, 67, 34)),
+    ]
 
 
-# Métricas que ya son el valor de un anillo
+# Métricas que ya son el valor de un anillo: en las tarjetas serían la misma
+# cifra por segunda vez.
 RING_KEYS = {"sleep_s", "intensity_week"}
 
 
 def summary_tiles(cur_stats: dict, base_stats: dict, lang: str = "en") -> list[tuple]:
-    """(etiqueta, valor, tendencia, estado) por métrica, para la cabecera del HTML."""
+    """(etiqueta, valor, tendencia, estado) por métrica, para la cabecera del HTML.
+
+    El estado es "good"/"bad"/"" según si la métrica se ha movido hacia su lado
+    bueno; sin histórico con el que comparar, no se moja. Las métricas que se
+    leen contra un rango fijo (ACWR, SRI, CV de HRV) sí se pronuncian solas.
+    """
     comparable = base_stats.get("n_nights", 0) >= 5
     tiles = []
     specs = get_summary_specs(lang)
@@ -1647,7 +1669,11 @@ def summary_tiles(cur_stats: dict, base_stats: dict, lang: str = "en") -> list[t
 
 
 def weekly_breakdown(weekly: list, base: dict, lang: str = "en") -> list[str]:
-    """Tabla de evolución semana a semana (informes multi-semana)."""
+    """Tabla de evolución semana a semana (informes multi-semana).
+
+    Una columna por semana ISO del periodo + una columna Tendencia que compara
+    la última semana con la media de las anteriores.
+    """
     cur = weekly[-1]["stats"]
     heads = " | ".join(w["wk_label"] for w in weekly)
     is_es = lang == "es"
@@ -1674,7 +1700,11 @@ def weekly_breakdown(weekly: list, base: dict, lang: str = "en") -> list[str]:
 
 
 def title_range(start: date, end: date, lang: str = "en") -> str:
-    """Titular del informe: el rango de días, sin repetir lo que no cambia."""
+    """Titular del informe: el rango de días, sin repetir lo que no cambia.
+
+    El número de semana ISO es jerga y el resto de la portada ya dice de qué es
+    el informe, así que el titular se queda con lo único que lo identifica.
+    """
     m_long = MONTHS_LONG.get(lang, MONTHS_LONG["en"])
     if (start.year, start.month) == (end.year, end.month):
         return f"{start.day}–{end.day} {m_long[end.month]} {end.year}"
@@ -1784,6 +1814,7 @@ def generate_md(
     te_labels = TE_LABELS_MAP.get(lang, TE_LABELS_MAP["en"])
     hrv_map = HRV_STATUS_MAP.get(lang, HRV_STATUS_MAP["en"])
 
+    # Mapear calendar_date → noche anterior (el día en que el usuario se acostó)
     sleep_by_date = {
         (date.fromisoformat(n.calendar_date) - timedelta(days=1)).isoformat(): n
         for n in sleep_rows
@@ -1804,7 +1835,9 @@ def generate_md(
 
     day_col_width = "------------" if multi_week else "-----"
 
-    # --- Sueño / Sleep ---
+    # --- Sueño ---
+    # La columna de siesta solo aparece si hubo alguna: en semanas sin siestas
+    # sería una columna de guiones.
     has_naps = any(n.nap_s for n in sleep_rows)
     if is_es:
         nap_head = " Siesta |" if has_naps else ""
@@ -1853,6 +1886,7 @@ def generate_md(
     avg_sleep = fmt_duration(total_sleep_s // sleep_count) if sleep_count else "–"
     avg_score = round(total_score / score_count) if score_count else "–"
 
+    # Regularidad (dispersión de las horas de acostarse/despertar) y desvelo medio
     bed_sd = sd_minutes([bed_minutes(n.start_ts) for n in present])
     wake_sd = sd_minutes([wake_minutes(n.end_ts) for n in present])
     awake_vals = [n.awake_s for n in present if n.awake_s is not None]
@@ -1875,6 +1909,7 @@ def generate_md(
     else:
         lines.append(f"\n**Average:** {avg_sleep} · Avg Score: {avg_score}{sri_str}{sjl_str}{reg_str}{awake_str}\n\n")
 
+    # Contexto de la noche: lo que Garmin mide pero no cabe en la tabla.
     def avg_of(field, scale=1):
         vals = [getattr(n, field) for n in present if getattr(n, field) is not None]
         return statistics.mean(vals) * scale if vals else None
@@ -2107,6 +2142,7 @@ def generate_md(
             f"| {label} | {session_str} | {hr_str} | {im_str} | {bb_str} | {steps_str} | {floors_str} |\n"
         )
 
+    # Total de intensidad del periodo frente a la guía OMS
     if intensity_map:
         tot = sum(v[0] for v in intensity_map.values() if v[0] is not None)
         modt = sum(v[1] for v in intensity_map.values() if v[1] is not None)
@@ -2197,7 +2233,11 @@ def generate_md(
                       ("min_heart_rate", "avg_heart_rate", "max_heart_rate")]
                 hr_str = "/".join(str(round(v)) if v else "–" for v in hr) \
                     if any(hr) else "–"
+                # En las vueltas la cadencia viene en zancadas/min (una pierna).
                 cad = lap.get("avg_running_cadence")
+                # Garmin da subida y bajada como dos magnitudes positivas. Se
+                # muestran ambas: el neto escondería el desnivel de las vueltas
+                # onduladas (subir 7 y bajar 10 no es "bajar 3").
                 asc, desc = lap.get("total_ascent"), lap.get("total_descent")
                 vert = " / ".join(p for p in (f"+{round(asc)}" if asc else "",
                                               f"-{round(desc)}" if desc else "") if p)
@@ -2216,7 +2256,7 @@ def generate_md(
                      + " · ".join(f"{lbl} {round(val):,}".replace(",", ".") + f" ({d})"
                                   for lbl, val, d in records) + "\n")
 
-    # --- Forma física / Fitness ---
+    # --- Forma física: VO2máx y ritmos previstos ---
     lines.append("\n## Forma física\n\n" if is_es else "\n## Fitness\n\n")
     if vo2max:
         run_v, cyc_v, vo2_date = vo2max
@@ -2270,8 +2310,15 @@ def generate_md(
 
 def build_report(conn: sqlite3.Connection, start: date, end: date,
                  generated_on: date | None = None, notice: str = "",
-                 lang: str = "en") -> tuple[str, str]:
-    """Genera el informe completo a partir de la BD: devuelve (markdown, html)."""
+                 lang: str = "en", goals: dict | None = None,
+                 standalone: bool = True) -> tuple[str, str]:
+    """Genera el informe completo a partir de la BD: devuelve (markdown, html).
+
+    `standalone=False` devuelve el HTML como fragmento incrustable (sin <head>
+    ni barra propia), que es como lo pide el panel web.
+    """
+    # Offset UTC→local para que las agregaciones por día (y las horas de sueño)
+    # usen la fecha local, no la UTC en que Garmin guarda los timeseries.
     tz_min = tz_offset_minutes(conn)
     is_es = lang == "es"
 
@@ -2288,6 +2335,8 @@ def build_report(conn: sqlite3.Connection, start: date, end: date,
     vo2max = query_vo2max(conn, end)
     race_pred = query_race_predictions(conn)
 
+    # Tendencias: una semana se compara con las ~4 previas; un periodo largo se
+    # trocea en sus semanas ISO y se compara la última con la media de las anteriores.
     multi_week = (end - start).days + 1 > 7
     weekly = None
     m_short = MONTHS_SHORT.get(lang, MONTHS_SHORT["en"])
@@ -2328,18 +2377,22 @@ def build_report(conn: sqlite3.Connection, start: date, end: date,
 
     traffic_light = compute_health_traffic_light(cur_stats, base_stats, flags, sleep_rows, lang=lang)
 
+    # Las medias del periodo previo son la cruz del mapa de recuperación: sin
+    # ellas la gráfica no tiene contra qué comparar y no se dibuja.
     baselines = ({"rhr": base_stats["rhr"], "hrv": base_stats["hrv"],
                   "swc_low": cur_stats.get("hrv_swc_low"), "swc_high": cur_stats.get("hrv_swc_high")}
                  if base_stats.get("n_nights", 0) >= 5 else None)
     return md, render_html.render(md, sleep_rows, stress_map, bb_map, steps_map,
                                   start, end, tiles=summary_tiles(cur_stats, base_stats, lang=lang),
-                                  rings=summary_rings(cur_stats, base_stats, lang=lang),
+                                  rings=summary_rings(cur_stats, base_stats, lang=lang, goals=goals),
                                   baselines=baselines,
                                   intensity_map=intensity_map,
                                   vo2max=vo2max,
                                   race_pred=race_pred,
                                   traffic_light=traffic_light,
-                                  lang=lang)
+                                  lang=lang,
+                                  goals=goals,
+                                  standalone=standalone)
 
 
 # ---------------------------------------------------------------------------
@@ -2413,6 +2466,7 @@ def main():
     output_path.write_text(md, encoding="utf-8")
     print(f"Informe guardado en: {output_path}" if is_es else f"Report saved to: {output_path}")
 
+    # Misma información, formato legible por un humano: tablas + gráficas SVG.
     html_path = output_path.with_suffix(".html")
     html_path.write_text(html, encoding="utf-8")
     print(f"Versión HTML en: {html_path}" if is_es else f"HTML report saved to: {html_path}")

@@ -20,7 +20,7 @@
   <!-- Barra superior unificada de BioDelta -->
   <header class="app-header">
     <div class="app-header-in">
-      <div class="app-brand" id="brand-home" title="BioDelta">
+      <div class="app-brand" id="brand-home" data-i18n-title="brand_tooltip" title="BioDelta - Health & Longevity Dashboard">
         <svg class="logo" viewBox="0 0 32 32" width="26" height="26" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
           <path d="M2 24H6L16 5L26 24H30" />
           <path d="M11 24L14 17L17 27.5L19.5 21L22.5 24" />
@@ -30,13 +30,13 @@
 
       <!-- Controles de Time Travel / Navegación temporal -->
       <div class="time-nav">
-        <button id="btn-prev-week" class="time-btn" title="Previous week (◀)" aria-label="Previous week">◀</button>
+        <button id="btn-prev-week" class="time-btn" data-i18n-title="prev_week_title" title="Previous week (◀)" aria-label="Previous week">◀</button>
         <div class="range-selector-wrap">
-          <select id="range-select" aria-label="Select week or date range">
-            <option value="loading">Loading dates...</option>
+          <select id="range-select" data-i18n-label="select_placeholder" aria-label="Select week or date range">
+            <option value="loading" data-i18n="loading_dates">Loading dates...</option>
           </select>
         </div>
-        <button id="btn-next-week" class="time-btn" title="Next week (▶)" aria-label="Next week">▶</button>
+        <button id="btn-next-week" class="time-btn" data-i18n-title="next_week_title" title="Next week (▶)" aria-label="Next week">▶</button>
       </div>
 
       <!-- Acciones y Herramientas -->
@@ -45,18 +45,18 @@
           🇬🇧 EN
         </button>
         <button id="btn-open-sync" class="action-btn primary" title="Sync with Garmin Connect">
-          <span class="icon">🔄</span> <span id="lbl-sync">Sync</span>
+          <span class="icon">🔄</span> <span data-i18n="lbl_sync">Sync</span>
         </button>
         <button id="btn-open-upload" class="action-btn" title="Load garmin_data.db file">
-          <span class="icon">📁</span> <span id="lbl-upload">Upload</span>
+          <span class="icon">📁</span> <span data-i18n="lbl_upload">Upload</span>
         </button>
         <button id="btn-open-demo" class="action-btn" title="Try with synthetic demo data">
-          <span class="icon">✨</span> Demo
+          <span class="icon">✨</span> <span data-i18n="lbl_demo">Demo</span>
         </button>
         <button id="btn-open-glossary" class="action-btn" title="Educational health metric glossary">
-          <span class="icon">📖</span> <span id="lbl-glossary">Glossary</span>
+          <span class="icon">📖</span> <span data-i18n="lbl_glossary">Glossary</span>
         </button>
-        <button id="btn-open-settings" class="action-btn" title="Health targets & settings">
+        <button id="btn-open-settings" class="action-btn" data-i18n-title="lbl_settings" title="Settings">
           <span class="icon">⚙️</span>
         </button>
         <button id="btn-print" class="action-btn" title="Export to PDF or Print">
@@ -276,9 +276,9 @@
           <div class="form-group">
             <label for="set-intensity" data-i18n="settings_intensity_label">Weekly intensity minutes goal (WHO):</label>
             <select id="set-intensity">
-              <option value="150" selected>150 min / week (WHO Minimum)</option>
+              <option value="150">150 min / week (WHO minimum)</option>
               <option value="225">225 min / week</option>
-              <option value="300">300 min / week (Athlete)</option>
+              <option value="300" selected>300 min / week (Recommended)</option>
               <option value="450">450 min / week (High performance)</option>
             </select>
           </div>

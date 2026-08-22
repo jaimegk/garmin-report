@@ -195,7 +195,12 @@ def svg_line(title, labels, values, name, unit="", fmt=None, ylim=None,
 
 
 def svg_sleep_timeline(title, labels, nights, fmt_dur, lang: str = "en") -> str:
-    """Cada noche en su hora real: cuándo te acostaste, cuándo te levantaste."""
+    """Cada noche en su hora real: cuándo te acostaste, cuándo te levantaste.
+
+    Una barra apilada por noche solo dice cuánto dormiste. Puesta sobre el reloj
+    dice además a qué hora, que es justo lo que mide la regularidad — y la
+    irregularidad se ve como un escalón, sin tener que leer ninguna columna.
+    """
     rows = [(lab, n) for lab, n in zip(labels, nights)]
     if not any(n for _l, n in rows):
         return ""
@@ -270,6 +275,8 @@ def svg_sleep_timeline(title, labels, nights, fmt_dur, lang: str = "en") -> str:
                 f' class="tick{short}">{_esc(fmt_dur(n.sleep_s))}</text>'
             )
 
+    # Las medianas son la referencia de regularidad: cuanto más pegadas estén
+    # las barras a ellas, más constante ha sido la semana.
     median_targets = (
         (beds, "acostarse" if is_es else "bedtime"),
         (wakes, "despertar" if is_es else "wake")
@@ -300,7 +307,13 @@ def svg_sleep_timeline(title, labels, nights, fmt_dur, lang: str = "en") -> str:
 
 
 def svg_recovery_map(title, labels, rhr, hrv, base_rhr, base_hrv, swc_low=None, swc_high=None, lang: str = "en") -> str:
-    """FC en reposo contra HRV, unidas en orden cronológico."""
+    """FC en reposo contra HRV, unidas en orden cronológico.
+
+    Las dos métricas cuentan la misma historia y siempre hay que cruzarlas a
+    mano entre dos gráficas. Aquí cada noche es un punto y la semana es el
+    recorrido: hacia la esquina de arriba a la izquierda, recuperando; hacia la
+    de abajo a la derecha, acumulando fatiga.
+    """
     idx = [i for i in range(len(labels)) if rhr[i] is not None and hrv[i] is not None]
     if len(idx) < 2 or not base_rhr or not base_hrv:
         return ""
@@ -397,7 +410,10 @@ def svg_recovery_map(title, labels, rhr, hrv, base_rhr, base_hrv, swc_low=None, 
 
 
 def svg_week_wheel(title, labels, values, goal=None, unit="", lang: str = "en") -> str:
-    """Los días en círculo: una semana no es una recta, es un ciclo que se repite."""
+    """Los días en círculo: una semana no es una recta, es un ciclo que se repite.
+
+    Cada radio es un día; el anillo de puntos, el objetivo.
+    """
     vals = [v for v in values if v]
     if not vals:
         return ""
@@ -454,7 +470,11 @@ def svg_week_wheel(title, labels, values, goal=None, unit="", lang: str = "en") 
 
 
 def svg_battery_range(title, labels, lows, highs, stress, lang: str = "en") -> str:
-    """Cuánta batería gastaste cada día (la barra) y con cuánto estrés (el punto)."""
+    """Cuánta batería gastaste cada día (la barra) y con cuánto estrés (el punto).
+
+    Body Battery no es un número, es un recorrido entre el mínimo y el máximo
+    del día: dibujar solo la media escondería justo eso.
+    """
     if not any(v is not None for v in stress) and not any(v is not None for v in highs):
         return ""
     is_es = lang == "es"
@@ -497,6 +517,13 @@ def svg_battery_range(title, labels, lows, highs, stress, lang: str = "en") -> s
 
 
 def svg_spo2_resp(title, labels, spo2_mins, spo2_avgs, resp_avgs, lang: str = "en") -> str:
+    """SpO2 y respiración nocturnas, cada una con su propio eje.
+
+    Dos escalas incompatibles (% y resp/min) en un solo dibujo solo se pueden
+    leer si cada una tiene su propio eje: SpO2 a la izquierda, respiración a
+    la derecha. Sin el eje derecho los puntos de respiración caen sobre una
+    rejilla de porcentajes que no significa nada para ellos.
+    """
     """SpO2 (rango mín–media en barra) y Frecuencia Respiratoria nocturna (línea)."""
     has_spo2 = any(v is not None for v in spo2_avgs)
     has_resp = any(v is not None for v in resp_avgs)
@@ -523,6 +550,7 @@ def svg_spo2_resp(title, labels, spo2_mins, spo2_avgs, resp_avgs, lang: str = "e
         dec = 0 if hi_resp - lo_resp >= 4 else 1
         for frac in (0.0, 0.5, 1.0):
             v = lo_resp + (hi_resp - lo_resp) * frac
+            # La unidad va pegada al tick de arriba; un rótulo aparte se solaparía.
             unit = (" resp/min" if is_es else " br/min") if frac == 1.0 else ""
             parts.append(
                 f'<text x="{W - pad_r + 6}" y="{PAD_T + PLOT_H * (1 - frac):.1f}"'
@@ -575,7 +603,12 @@ def svg_spo2_resp(title, labels, spo2_mins, spo2_avgs, resp_avgs, lang: str = "e
 
 
 def svg_intensity_bars(title, labels, values, goal=None, lang: str = "en") -> str:
-    """Minutos de intensidad diarios en barras, con la línea del objetivo diario."""
+    """Minutos de intensidad diarios en barras, con la línea del objetivo diario.
+
+    Misma geometría que el resto de series temporales: dentro de un `.pair` las
+    etiquetas del eje escalan a 19px, y en un lienzo de 320 px se apelotonan
+    hasta ser ilegibles.
+    """
     vals = [v for v in values if v is not None]
     if not vals:
         return ""
@@ -680,12 +713,15 @@ def fitness_cards_html(vo2max, race_pred, lang: str = "en") -> str:
 # ---------------------------------------------------------------------------
 
 def build_charts(sleep_rows, stress_map, bb_map, steps_map, start: date, end: date,
-                 baselines=None, intensity_map=None, vo2max=None, race_pred=None, lang: str = "en") -> dict:
+                 baselines=None, intensity_map=None, vo2max=None, race_pred=None,
+                 lang: str = "en", goals: dict | None = None) -> dict:
     """Devuelve {título de sección → svg}, alineado día a día con las tablas."""
     baselines = baselines or {}
     intensity_map = intensity_map or {}
     is_es = lang == "es"
+    steps_goal = int((goals or {}).get("steps_daily_goal") or STEPS_GOAL)
 
+    # Mismo desfase que generate_md: la noche se cuelga del día en que te acostaste.
     sleep_by_date = {
         (date.fromisoformat(n.calendar_date) - timedelta(days=1)).isoformat(): n
         for n in sleep_rows
@@ -760,7 +796,7 @@ def build_charts(sleep_rows, stress_map, bb_map, steps_map, start: date, end: da
 
     steps = [steps_map.get(k) for k in keys]
     wheel_title = "Pasos por día" if is_es else "Steps per day"
-    wheel = svg_week_wheel(wheel_title, labels, steps, goal=STEPS_GOAL, lang=lang)
+    wheel = svg_week_wheel(wheel_title, labels, steps, goal=steps_goal, lang=lang)
     im_vals = [intensity_map.get(k, (None, None, None))[0] if intensity_map else None for k in keys]
     int_title = "Minutos de intensidad / día" if is_es else "Intensity minutes / day"
     int_bars = svg_intensity_bars(int_title, labels, im_vals, goal=150 / 7, lang=lang)
@@ -1011,7 +1047,7 @@ def glossary_modal_html(lang: str = "en") -> str:
             f'</article>'
         )
 
-    title_modal = "📖 Glosario de Métricas y Salud" if is_es else "📖 Health & Metric Glossary"
+    title_modal = _esc("📖 Glosario de Métricas y Salud" if is_es else "📖 Health & Metric Glossary")
     close_lbl = "Cerrar glosario" if is_es else "Close glossary"
     search_ph = "🔍 Buscar métrica o concepto..." if is_es else "🔍 Search metric or concept (e.g. SRI, HRV, ACWR)..."
     cat_all = "Todos" if is_es else "All"
@@ -1204,7 +1240,14 @@ def _table(rows: list[str]) -> str:
 
 
 def md_to_html(md: str, charts: dict | None = None, lang: str = "en") -> str:
-    """Convierte el markdown del informe en HTML gráfico y editorial."""
+    """Convierte el markdown del informe en HTML gráfico y editorial.
+
+    - Inyecta las gráficas SVG al inicio de cada sección `##`.
+    - En la sección `Resumen`, enseña únicamente las Señales destacadas (las métricas
+      ya están en los anillos de portada y tarjetas de cabecera).
+    - Agrupa las tablas y notas contextuales detalladas en bloques `<details class="collapsible">`
+      desplegables, manteniendo las cifras clave y gráficas inmediatamente a la vista.
+    """
     charts = charts or {}
     is_es = lang == "es"
     out = []
@@ -1259,6 +1302,9 @@ def md_to_html(md: str, charts: dict | None = None, lang: str = "en") -> str:
                 )
                 out.append(f"<ul{ul}>{items}</ul>")
             if res_table:
+                # Las tarjetas de cabecera solo cubren la semana actual: en un informe
+                # multi-semana esta tabla es la única evolución que hay, y perderla
+                # dejaría el HTML contando menos que el markdown.
                 sum_title = "Métricas en detalle" if is_es else "Detailed metrics"
                 out.append(
                     f'<details class="collapsible"><summary>{sum_title}</summary>'
@@ -1894,10 +1940,13 @@ THEME_JS = """
 (function () {
   var root = document.documentElement, key = 'biodelta-theme';
   var btn = document.getElementById('theme-btn');
+  var isEs = (document.documentElement.lang || 'en') === 'es';
   function paint(t) {
     root.dataset.theme = t;
     if (btn) {
-      btn.textContent = t === 'dark' ? '☀ Claro' : '☾ Oscuro';
+      btn.textContent = t === 'dark'
+        ? (isEs ? '☀ Claro' : '☀ Light')
+        : (isEs ? '☾ Oscuro' : '☾ Dark');
       btn.setAttribute('aria-pressed', t === 'dark');
     }
   }
@@ -2000,18 +2049,6 @@ THEME_JS = """
     });
   });
 
-  // 3. Language Switcher (Standalone HTML)
-  var lBtn = document.getElementById('lang-btn');
-  if (lBtn) {
-    lBtn.addEventListener('click', function () {
-      var current = document.documentElement.lang || 'en';
-      var next = current === 'es' ? 'en' : 'es';
-      try { localStorage.setItem('biodelta-lang', next); } catch (e) {}
-      var url = new URL(window.location.href);
-      url.searchParams.set('lang', next);
-      window.location.href = url.toString();
-    });
-  }
 })();
 """
 
@@ -2060,14 +2097,11 @@ def _navbar(title: str, body: str, lang: str = "en") -> str:
     glossary_lbl = "📖 Glosario" if is_es else "📖 Glossary"
     print_lbl = "🖨️ Imprimir" if is_es else "🖨️ Print"
     theme_lbl = "☾ Oscuro" if is_es else "☾ Dark"
-    flag_btn = "🇪🇸 ES" if is_es else "🇬🇧 EN"
-    lang_tip = "Cambiar a inglés" if is_es else "Switch to Spanish"
 
     return (
         '<nav class="topbar"><div class="topbar-in">'
         f'<span class="brand">{_esc(title)}</span>'
         f'<div class="navlinks">{links}</div>'
-        f'<button id="lang-btn" class="nav-btn lang-btn" type="button" title="{_esc(lang_tip)}" aria-label="{_esc(lang_tip)}">{flag_btn}</button>'
         f'<button id="glossary-btn" class="nav-btn" type="button" aria-label="{glossary_lbl}">{glossary_lbl}</button>'
         f'<button id="print-btn" class="nav-btn" type="button" onclick="window.print()" aria-label="{print_lbl}">{print_lbl}</button>'
         f'<button id="theme-btn" class="theme-btn" type="button" aria-pressed="false">{theme_lbl}</button>'
@@ -2077,9 +2111,17 @@ def _navbar(title: str, body: str, lang: str = "en") -> str:
 
 def render(md: str, sleep_rows, stress_map, bb_map, steps_map, start: date, end: date,
            tiles=(), rings=(), baselines=None, intensity_map=None, vo2max=None, race_pred=None,
-           traffic_light=None, lang: str = "en") -> str:
+           traffic_light=None, lang: str = "en", goals: dict | None = None,
+           standalone: bool = True) -> str:
+    """Informe HTML completo.
+
+    `standalone=False` deja fuera la barra superior y el glosario: el panel web
+    monta el informe dentro de un iframe y ya pone los suyos. Sigue siendo un
+    documento entero — así su CSS y sus IDs no se mezclan con los del panel.
+    """
     charts = build_charts(sleep_rows, stress_map, bb_map, steps_map, start, end,
-                          baselines, intensity_map=intensity_map, vo2max=vo2max, race_pred=race_pred, lang=lang)
+                          baselines, intensity_map=intensity_map, vo2max=vo2max,
+                          race_pred=race_pred, lang=lang, goals=goals)
     # Semáforo de estado, anillos y cifras se inyectan bajo el `## Resumen` o `## Summary`
     resumen_parts = []
     if traffic_light:
@@ -2106,10 +2148,9 @@ def render(md: str, sleep_rows, stress_map, bb_map, steps_map, start: date, end:
         + favicon_link()
         + f'<style>{CSS}</style>\n'
         f'<script>{THEME_BOOT}</script>\n</head>\n<body>\n'
-        + _navbar(title, body, lang=lang)
+        + (_navbar(title, body, lang=lang) if standalone else "")
         + '<main class="wrap">\n' + body + '\n</main>\n'
-        + glossary_modal_html(lang=lang)
+        + (glossary_modal_html(lang=lang) if standalone else "")
         + tooltip_html()
         + f'<script>{THEME_JS}</script>\n</body>\n</html>\n'
     )
-

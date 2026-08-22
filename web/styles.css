@@ -227,7 +227,6 @@ body {
 
 /* Contenido del Reporte dentro de BioDelta */
 .report-content { width: 100%; }
-.report-content .topbar { display: none; } /* Ocultar la barra interna ya que usamos la principal */
 
 /* ==========================================================================
    Modales del Sistema
@@ -414,4 +413,59 @@ body {
 @media print {
   .app-header, .modal-overlay, .toast-container { display: none !important; }
   .app-main { padding: 0 !important; }
+}
+
+/* Glosario: el panel monta sus propias tarjetas, así que necesita sus propios
+   estilos (antes se aprovechaba, sin quererlo, del CSS que colaba el informe). */
+.modal-filter-bar {
+  padding: 0.9rem 1.4rem;
+  border-bottom: 1px solid var(--grid);
+  display: flex; flex-direction: column; gap: 0.75rem;
+}
+#modal-glossary-search {
+  width: 100%; padding: 0.55rem 0.85rem;
+  border: 1px solid var(--hairline); border-radius: 8px;
+  font-family: inherit; font-size: 0.88rem;
+  background: var(--surface); color: var(--ink); outline: none;
+}
+#modal-glossary-search:focus { border-color: var(--accent); }
+.glossary-categories { display: flex; gap: 0.45rem; flex-wrap: wrap; }
+.cat-pill {
+  border: 1px solid var(--hairline); background: var(--paper);
+  color: var(--ink2); border-radius: 980px; padding: 0.22rem 0.7rem;
+  font-family: inherit; font-size: 0.74rem; cursor: pointer;
+}
+.cat-pill:hover { background: var(--surface); }
+.cat-pill.active { background: var(--ink); color: var(--paper); border-color: var(--ink); }
+.glossary-grid {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(19rem, 1fr));
+  gap: 1rem;
+}
+.glossary-card {
+  border: 1px solid var(--hairline); border-radius: 10px;
+  padding: 1rem 1.1rem; background: var(--surface);
+  display: flex; flex-direction: column; gap: 0.3rem;
+}
+.glossary-card-header {
+  display: flex; justify-content: space-between; align-items: baseline; gap: 0.5rem;
+}
+.glossary-card h4 { margin: 0; font-size: 0.92rem; font-weight: 700; color: var(--ink); }
+.glossary-badge {
+  font-size: 0.68rem; font-weight: 600; text-transform: uppercase;
+  color: var(--muted); letter-spacing: 0.04em; white-space: nowrap;
+}
+.glossary-card p { margin: 0.15rem 0; font-size: 0.82rem; line-height: 1.45; color: var(--ink2); }
+.glossary-card p strong { color: var(--ink); }
+.glossary-range {
+  margin-top: 0.35rem; padding-top: 0.35rem;
+  border-top: 1px dashed var(--hairline); font-size: 0.78rem; color: var(--accent);
+}
+
+/* El informe se monta en su propio documento: ni su CSS ni sus ids se mezclan
+   con los del panel. La altura la ajusta app.js al contenido real. */
+.report-frame {
+  display: block;
+  width: 100%;
+  min-height: 60vh;
+  border: 0;
 }

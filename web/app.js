@@ -202,6 +202,8 @@
     status: null,
     glossary: {},
     mfaSessionId: null,
+    reportFrame: null,
+    settings: null,
     theme: localStorage.getItem('biodelta-theme') || 'light',
     lang: localStorage.getItem('biodelta-lang') || 'en',
   };
@@ -296,6 +298,7 @@
     state.theme = state.theme === 'dark' ? 'light' : 'dark';
     dom.html.dataset.theme = state.theme;
     updateThemeButtonText();
+    syncFrameTheme();
     try {
       localStorage.setItem('biodelta-theme', state.theme);
     } catch (e) {}
@@ -326,14 +329,20 @@
       }
     });
 
+    // Tooltips y etiquetas accesibles, con las mismas marcas que los textos
+    document.querySelectorAll('[data-i18n-title]').forEach(el => {
+      const v = t[el.getAttribute('data-i18n-title')];
+      if (v !== undefined) el.title = v;
+    });
+    document.querySelectorAll('[data-i18n-label]').forEach(el => {
+      const v = t[el.getAttribute('data-i18n-label')];
+      if (v !== undefined) el.setAttribute('aria-label', v);
+    });
+
     // Actualizar placeholders
     if (dom.glossarySearch) {
       dom.glossarySearch.placeholder = t.glossary_search_ph;
     }
-
-    // Actualizar textos de botones de navegación
-    if (dom.btnPrev) dom.btnPrev.title = t.prev_week_title;
-    if (dom.btnNext) dom.btnNext.title = t.next_week_title;
 
     updateThemeButtonText();
     updateSettingsOptions(lang);
@@ -361,12 +370,21 @@
     }
     if (dom.setIntensity) {
       dom.setIntensity.innerHTML = `
-        <option value="150" selected>${isEs ? '150 min / semana (Mínimo OMS)' : '150 min / week (WHO Minimum)'}</option>
+        <option value="150">${isEs ? '150 min / semana (mínimo OMS)' : '150 min / week (WHO minimum)'}</option>
         <option value="225">${isEs ? '225 min / semana' : '225 min / week'}</option>
-        <option value="300">${isEs ? '300 min / semana (Deportista)' : '300 min / week (Athlete)'}</option>
+        <option value="300" selected>${isEs ? '300 min / semana (recomendado)' : '300 min / week (Recommended)'}</option>
         <option value="450">${isEs ? '450 min / semana (Alto rendimiento)' : '450 min / week (High performance)'}</option>
       `;
     }
+    applySettingsToForm();
+  }
+
+  function applySettingsToForm() {
+    const st = state.settings;
+    if (!st) return;
+    if (dom.setSleep && st.sleep_target_hours) dom.setSleep.value = Number(st.sleep_target_hours).toFixed(1);
+    if (dom.setSteps && st.steps_daily_goal) dom.setSteps.value = String(st.steps_daily_goal);
+    if (dom.setIntensity && st.intensity_weekly_goal) dom.setIntensity.value = String(st.intensity_weekly_goal);
   }
 
   async function toggleLanguage() {
@@ -390,6 +408,8 @@
       const res = await fetch(`/api/status?lang=${state.lang}`);
       const data = await res.json();
       state.status = data;
+      state.settings = data.settings || null;
+      applySettingsToForm();
 
       updateAuthStatusUI(data.has_tokens);
 
@@ -469,14 +489,19 @@
       state.currentStart = data.start;
       state.currentEnd = data.end;
 
-      // Inyectar HTML del informe
-      dom.reportContainer.innerHTML = data.html;
+      renderReportFrame(data.html);
 
-      // Actualizar select de semanas si coincide
+      // El desplegable debe decir siempre lo que se está mirando.
       const curKey = `${data.start}:${data.end}`;
-      if (dom.rangeSelect.querySelector(`option[value="${curKey}"]`)) {
-        dom.rangeSelect.value = curKey;
+      dom.rangeSelect.querySelectorAll('option.custom-range').forEach(o => o.remove());
+      if (!dom.rangeSelect.querySelector(`option[value="${curKey}"]`)) {
+        const opt = document.createElement('option');
+        opt.className = 'custom-range';
+        opt.value = curKey;
+        opt.textContent = data.title;
+        dom.rangeSelect.prepend(opt);
       }
+      dom.rangeSelect.value = curKey;
 
       updateNavButtonsState(data.prev_week, data.next_week);
       showReport();
@@ -487,10 +512,56 @@
     }
   }
 
+  // El informe vive dentro de un iframe: aislamiento total de estilos e ids, y
+  // sus propios scripts (tooltips, resalte de día) sí se ejecutan.
+  function renderReportFrame(html) {
+    const frame = document.createElement('iframe');
+    frame.className = 'report-frame';
+    frame.title = 'BioDelta report';
+    frame.srcdoc = html;
+    frame.addEventListener('load', () => {
+      syncFrameTheme();
+      fitFrameHeight(frame);
+    });
+    dom.reportContainer.replaceChildren(frame);
+    state.reportFrame = frame;
+  }
+
+  function fitFrameHeight(frame) {
+    if (!frame) return;
+    try {
+      // Se mide con la altura a 0: si no, el propio iframe sostiene el alto que
+      // acabamos de fijarle y este nunca vuelve a encoger.
+      frame.style.height = '0';
+      frame.style.height = frame.contentDocument.documentElement.scrollHeight + 'px';
+    } catch (e) {}
+  }
+
+  // Las gráficas son SVG fluidos: al cambiar el ancho de la ventana cambia el alto.
+  let resizeTimer = null;
+  window.addEventListener('resize', () => {
+    clearTimeout(resizeTimer);
+    resizeTimer = setTimeout(() => fitFrameHeight(state.reportFrame), 150);
+  });
+
+  function syncFrameTheme() {
+    const frame = state.reportFrame;
+    try {
+      if (frame && frame.contentDocument) {
+        frame.contentDocument.documentElement.dataset.theme = state.theme;
+      }
+    } catch (e) {}
+  }
+
+  // Sin datos más allá del rango disponible no hay a dónde viajar.
   function updateNavButtonsState(prevWeek, nextWeek) {
-    if (!prevWeek || !state.weeks.length) {
-      dom.btnPrev.disabled = false;
-    }
+    const inRange = (w) => {
+      if (!w) return false;
+      if (state.isDemo || !state.weeks.length) return true;
+      return w.start >= state.weeks[state.weeks.length - 1].start && w.start <= state.weeks[0].start;
+    };
+    dom.btnPrev.disabled = !inRange(prevWeek);
+    dom.btnNext.disabled = !inRange(nextWeek);
     dom.btnPrev.dataset.start = prevWeek ? prevWeek.start : '';
     dom.btnPrev.dataset.end = prevWeek ? prevWeek.end : '';
     dom.btnNext.dataset.start = nextWeek ? nextWeek.start : '';
@@ -763,7 +834,11 @@
   function setupEventListeners() {
     if (dom.btnLang) dom.btnLang.addEventListener('click', toggleLanguage);
     dom.themeBtn.addEventListener('click', toggleTheme);
-    dom.btnPrint.addEventListener('click', () => window.print());
+    dom.btnPrint.addEventListener('click', () => {
+      const frame = state.reportFrame;
+      if (frame && frame.contentWindow) frame.contentWindow.print();
+      else window.print();
+    });
 
     // Logo click -> Volver a portada / refrescar
     dom.btnBrand.addEventListener('click', () => {
@@ -884,6 +959,8 @@
           }),
         });
         const data = await res.json();
+        state.settings = data.settings || state.settings;
+        applySettingsToForm();
         closeModal('modal-settings');
         showToast(t.settings_saved_toast, 'success');
         if (state.currentStart && state.currentEnd) {
