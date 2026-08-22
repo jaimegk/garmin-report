@@ -10,48 +10,57 @@ _**English** · [Español](README.es.md)_
 [![Tests](https://github.com/jaimegk/biodelta/actions/workflows/tests.yml/badge.svg)](https://github.com/jaimegk/biodelta/actions/workflows/tests.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
-Turn your [Garmin Connect](https://connect.garmin.com) data into a weekly health report that
-tells you **what deserves attention** — not just what happened.
+Turn your [Garmin Connect](https://connect.garmin.com) data into a weekly health report and interactive dashboard that tells you **what deserves attention** — not just what happened.
 
-Every metric is compared against **your own average over the previous ~4 weeks** (not against
-population norms), and that comparison drives automatic **signals**: resting heart rate up for
-several days in a row, HRV below your usual, short nights, irregular bedtimes, high stress.
+Every metric is compared against **your own average over the previous ~4 weeks** (not against population norms), and that comparison drives automatic **signals and diagnostics**: health traffic light, resting heart rate up for several days in a row, HRV out of your normal band, short nights, irregular bedtimes, and high stress.
 
-Everything runs locally. Your credentials and your health data never leave your machine.
+Everything runs 100% locally. Your credentials and your health data never leave your machine.
 
 > The report itself is written in Spanish. The code, the docs and this README are in English.
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/screenshot-dark.png">
-  <img src="docs/screenshot.png" alt="Report header: summary rings, metric sheet and automatic signals">
+  <img src="docs/screenshot.png" alt="Report header: health traffic light, summary rings, metric sheet and automatic signals">
 </picture>
 
-**[▶ See a full example report](https://jaimegk.github.io/biodelta/)** ·
+**[▶ See a full interactive example report](https://jaimegk.github.io/biodelta/)** ·
 [Markdown version](docs/ejemplo_garmin_log.md)
 
-## Try it in 30 seconds (no Garmin account needed)
+## 🚀 1-Click Quickstart
+
+You can use BioDelta without touching the terminal or configuring environments:
+
+- **Linux / macOS:** Double-click `iniciar.command` or run:
+  ```bash
+  ./iniciar.sh
+  ```
+- **Windows:** Double-click `iniciar.bat`.
+
+The launcher will automatically set up the virtual environment and open BioDelta in your web browser at `http://localhost:8000`.
+
+### Try it in 30 seconds (no Garmin account needed)
 
 ```bash
 git clone https://github.com/jaimegk/biodelta.git
 cd biodelta
-python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
-
-.venv/bin/python generate_report.py --demo
+./iniciar.sh
 ```
 
-`--demo` builds a synthetic six-week database and generates the full report into `output/`.
-No account, no credentials, no network.
+When the app opens, click **✨ Demo Mode** to explore a complete 6-week report with synthetic data and all signals active.
 
 ## What makes it different
 
-**Signals, not just numbers.** The report opens by telling you what to look at. Twelve rules
-compare the week against your baseline and flag whatever stands out.
+**Health Traffic Light & Human Diagnostics.** Opens with an executive summary (🟢 Optimal / 🟡 Warning / 🔴 Recovery Needed) and 3 plain-language diagnosis sentences covering Sleep duration & regularity, Autonomic recovery & stress, and Actionable advice.
 
-**Your baseline, not the population's.** "49 bpm" means nothing on its own; "49 bpm when
-yours is 46, three days running" does.
+**Local Web Dashboard & Time Travel.** Seamlessly jump between weeks (`◀` / `▶`), drag-and-drop SQLite databases (`garmin_data.db`), or sync directly with Garmin Connect with full **two-factor authentication (2FA/MFA)** support.
 
-**Both charts tell the same story.** When resting heart rate climbs, HRV drops — the report
-shows them side by side instead of leaving you to cross-reference tables.
+**Interactive Metric Glossary.** Integrated `📖 Glosario` button with clear, evidence-based definitions for every metric (SRI, ACWR, RMSSD, Aerobic Decoupling, VO2max, etc.).
+
+**Synchronized & Interactive Charts.** Hover over any day to see exact readings and highlight the same day simultaneously across all weekly charts.
+
+**Your baseline, not the population's.** "49 bpm" means nothing on its own; "49 bpm when yours is 46, three days running" does.
+
+**Both charts tell the same story.** When resting heart rate climbs, HRV drops — the report shows them side by side instead of leaving you to cross-reference tables.
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/screenshot-charts-dark.png">

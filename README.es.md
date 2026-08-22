@@ -7,46 +7,55 @@
 
 _[English](README.md) · **Español**_
 
-Convierte tus datos de [Garmin Connect](https://connect.garmin.com) en un informe semanal
-que te dice **qué merece atención**, no solo qué pasó.
+Convierte tus datos de [Garmin Connect](https://connect.garmin.com) en un informe semanal y panel interactivo que te dice **qué merece atención**, no solo qué pasó.
 
-Cada métrica se compara con **tu propia media de las ~4 semanas previas** — no con la media
-de la población — y de ahí salen **señales** automáticas: FC en reposo elevada varios días
-seguidos, HRV por debajo de lo habitual, noches cortas, horarios irregulares, estrés alto.
+Cada métrica se compara con **tu propia media de las ~4 semanas previas** — no con la media de la población — y de ahí salen **señales y diagnósticos automáticos**: semáforo de estado de salud, FC en reposo elevada varios días seguidos, HRV fuera de tu rango normal, noches cortas, horarios irregulares y estrés alto.
 
-Todo corre en local: tus credenciales y tus datos de salud nunca salen de tu máquina.
+Todo corre 100% en local: tus credenciales y tus datos de salud nunca salen de tu ordenador.
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/screenshot-dark.png">
-  <img src="docs/screenshot.png" alt="Cabecera del informe: anillos de resumen, cifras y señales automáticas">
+  <img src="docs/screenshot.png" alt="Cabecera del informe: semáforo de estado, anillos de resumen, cifras y señales automáticas">
 </picture>
 
-**[▶ Ver un informe de ejemplo completo](https://jaimegk.github.io/biodelta/)** ·
+**[▶ Ver un informe de ejemplo interactivo](https://jaimegk.github.io/biodelta/)** ·
 [versión Markdown](docs/ejemplo_garmin_log.md)
 
-## Pruébalo en 30 segundos (sin cuenta de Garmin)
+## 🚀 Inicio Rápido en 1-Clic
+
+Puedes usar BioDelta sin escribir código ni configurar entornos manualmente:
+
+- **Linux / macOS:** Haz doble clic en `iniciar.command` o ejecuta en tu terminal:
+  ```bash
+  ./iniciar.sh
+  ```
+- **Windows:** Haz doble clic en `iniciar.bat`.
+
+El lanzador configurará automáticamente el entorno virtual y abrirá BioDelta en tu navegador web en `http://localhost:8000`.
+
+### Probar en 30 segundos (sin cuenta de Garmin)
 
 ```bash
 git clone https://github.com/jaimegk/biodelta.git
 cd biodelta
-python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
-
-.venv/bin/python generate_report.py --demo
+./iniciar.sh
 ```
 
-`--demo` construye una base de datos sintética de seis semanas y genera el informe completo
-en `output/`. No necesita cuenta, ni credenciales, ni conexión.
+Al abrir la aplicación, pulsa en **✨ Modo Demo** para explorar un informe completo de 6 semanas con datos sintéticos y todas las señales activas.
 
 ## Qué lo hace distinto
 
-**Señales, no solo números.** El informe abre diciéndote qué mirar. Doce reglas comparan la
-semana con tu línea base y avisan de lo que se sale.
+**Semáforo de Estado y Diagnóstico Humano.** Abre con una evaluación ejecutiva (🟢 Óptimo / 🟡 Atención / 🔴 Descanso necesario) y 3 frases en lenguaje natural sobre sueño, recuperación del sistema nervioso y recomendaciones prácticas.
 
-**Tu línea base, no la de la población.** «49 bpm» no significa nada por sí solo; «49 bpm
-cuando lo tuyo son 46, tres días seguidos» sí.
+**Panel Web Local y Viaje en el Tiempo.** Navega fácilmente entre semanas (`◀` / `▶`), arrastra archivos de base de datos (`garmin_data.db`) o sincroniza directamente con tu cuenta de Garmin con soporte para **verificación en dos pasos (2FA/MFA)**.
 
-**Las dos gráficas cuentan la misma historia.** Cuando la FC en reposo sube, el HRV baja: el
-informe lo enseña en paralelo en vez de dejarte cruzar tablas.
+**Glosario Educativo Integrado.** Botón `📖 Glosario` con explicaciones directas y comprensibles para cada métrica (SRI, ACWR, RMSSD, Desacoplamiento aeróbico, VO2máx, etc.).
+
+**Gráficas interactivas y sincronizadas.** Pasa el ratón sobre cualquier día para ver sus valores exactos y resaltarlo automáticamente en todas las gráficas de la semana.
+
+**Tu línea base, no la de la población.** «49 bpm» no significa nada por sí solo; «49 bpm cuando lo tuyo son 46, tres días seguidos» sí.
+
+**Las dos gráficas cuentan la misma historia.** Cuando la FC en reposo sube, el HRV baja: el informe lo enseña en paralelo en vez de dejarte cruzar tablas.
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/screenshot-charts-dark.png">

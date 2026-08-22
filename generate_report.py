@@ -1289,6 +1289,123 @@ def recovery_score(cur_stats: dict, base_stats: dict) -> float | None:
     return sum(w * v for w, v in parts) / sum(w for w, _ in parts)
 
 
+def compute_health_traffic_light(cur_stats: dict, base_stats: dict, flags: list[str], sleep_rows: list | None = None) -> dict:
+    """Calcula el estado global (Semáforo de Salud) y 3 frases de diagnóstico en lenguaje natural.
+
+    Devuelve un diccionario con:
+      - state: 'optimal' | 'warning' | 'recovery'
+      - badge: '🟢' | '🟡' | '🔴'
+      - title: 'Estado Óptimo' | 'Atención Requerida' | 'Descanso Necesario'
+      - sleep_diag: Frase sobre calidad, duración y regularidad del sueño
+      - recovery_diag: Frase sobre estado del sistema nervioso autónomo y estrés
+      - recommendation: Recomendación práctica directa para hoy y la semana
+    """
+    warn_count = sum(1 for f in flags if f.startswith("⚠️"))
+    rec = recovery_score(cur_stats, base_stats)
+    sleep_s = cur_stats.get("sleep_s")
+    rhr_cur, rhr_base = cur_stats.get("rhr"), base_stats.get("rhr")
+    hrv_cur, hrv_base = cur_stats.get("hrv"), base_stats.get("hrv")
+    stress_cur = cur_stats.get("stress")
+    sri = cur_stats.get("sri")
+    acwr = cur_stats.get("acwr")
+
+    # 1. Determinación del estado global
+    if (warn_count >= 3
+        or (rec is not None and rec < 40)
+        or (rhr_base and rhr_cur and rhr_cur >= rhr_base + 5 and hrv_base and hrv_cur and hrv_cur < hrv_base * 0.85)):
+        state = "recovery"
+        badge = "🔴"
+        title = "Descanso necesario"
+    elif (warn_count >= 1
+          or (rec is not None and rec < 60)
+          or (sleep_s is not None and sleep_s < 6.5 * 3600)
+          or (stress_cur is not None and stress_cur > 38)
+          or (sri is not None and sri < 70)
+          or (acwr is not None and (acwr > 1.40 or acwr < 0.70))):
+        state = "warning"
+        badge = "🟡"
+        title = "Atención requerida"
+    else:
+        state = "optimal"
+        badge = "🟢"
+        title = "Estado óptimo"
+
+    # 2. Diagnóstico de Sueño
+    if sleep_s:
+        dur_str = fmt_duration(round(sleep_s))
+        if sleep_s >= 7.5 * 3600:
+            s_lead = f"Excelente duración media de {dur_str} por noche"
+        elif sleep_s >= 7.0 * 3600:
+            s_lead = f"Duración de sueño adecuada ({dur_str}/noche)"
+        elif sleep_s >= 6.0 * 3600:
+            s_lead = f"Ligero déficit de sueño ({dur_str}/noche, por debajo del objetivo)"
+        else:
+            s_lead = f"Déficit severo de sueño acumulado ({dur_str}/noche)"
+
+        if sri is not None:
+            if sri >= 80:
+                s_tail = f" con gran regularidad circadiana (SRI {sri}/100)."
+            elif sri < 68:
+                s_tail = f" pero con horarios muy irregulares (SRI {sri}/100) que conviene estabilizar."
+            else:
+                s_tail = f" y regularidad moderada (SRI {sri}/100)."
+        else:
+            s_tail = "."
+        sleep_diag = s_lead + s_tail
+    else:
+        sleep_diag = "Sin registros suficientes de sueño para evaluar el descanso nocturno."
+
+    # 3. Diagnóstico de Recuperación y Estrés
+    rec_parts = []
+    if hrv_cur and hrv_base and base_stats.get("n_nights", 0) >= 5:
+        pct_diff = round((hrv_cur / hrv_base - 1) * 100)
+        if pct_diff >= 5:
+            rec_parts.append(f"Sistema nervioso autónomo en supercompensación (+{pct_diff}% HRV vs tu media)")
+        elif pct_diff <= -10:
+            rec_parts.append(f"Sistema nervioso bajo carga (HRV {abs(pct_diff)}% por debajo de tu media)")
+        else:
+            rec_parts.append(f"Equilibrio autonómico estable (HRV {round(hrv_cur)} ms, FC reposo {round(rhr_cur) if rhr_cur else '–'} bpm)")
+    elif hrv_cur:
+        rec_parts.append(f"HRV nocturno en {round(hrv_cur)} ms y FC reposo en {round(rhr_cur) if rhr_cur else '–'} bpm")
+    else:
+        rec_parts.append("Nivel de recuperación en seguimiento")
+
+    if stress_cur is not None:
+        if stress_cur >= 38:
+            rec_parts.append(f"con estrés diario elevado ({round(stress_cur)}/100).")
+        elif stress_cur <= 25:
+            rec_parts.append(f"con estrés diario bajo y relajado ({round(stress_cur)}/100).")
+        else:
+            rec_parts.append(f"con estrés diario moderado ({round(stress_cur)}/100).")
+    else:
+        rec_parts.append(".")
+    recovery_diag = " ".join(rec_parts)
+
+    # 4. Recomendación Práctica
+    if state == "optimal":
+        recommendation = "Cuerpo preparado para asimilar entrenamientos de calidad, tiradas largas o progresión de intensidad."
+    elif state == "warning":
+        if sleep_s and sleep_s < 7 * 3600:
+            recommendation = "Procura acostarte 30-45 min antes hoy y mantén la actividad deportiva en zona aeróbica suave (Zona 2)."
+        elif acwr and acwr > 1.40:
+            recommendation = "Carga acumulada alta: modera el volumen o la intensidad en los próximos días para evitar lesiones."
+        elif stress_cur and stress_cur > 38:
+            recommendation = "Nivel de estrés fisiológico alto: prioriza paseos ligeros, hidratación y desconexión antes de dormir."
+        else:
+            recommendation = "Día para trabajo suave o descanso activo; vigila sensaciones antes de subir la exigencia."
+    else: # recovery
+        recommendation = "Prioriza descanso total o caminata suave. Evita esfuerzos intensos hasta normalizar la FC en reposo y el HRV."
+
+    return {
+        "state": state,
+        "badge": badge,
+        "title": title,
+        "sleep_diag": sleep_diag,
+        "recovery_diag": recovery_diag,
+        "recommendation": recommendation,
+    }
+
+
 def _band(value, good, warn) -> str:
     """Estado por umbrales: bueno / a vigilar / malo. Sin dato, no se moja."""
     if value is None:
@@ -1921,6 +2038,8 @@ def build_report(conn: sqlite3.Connection, start: date, end: date,
         generated_on, notice,
     )
 
+    traffic_light = compute_health_traffic_light(cur_stats, base_stats, flags, sleep_rows)
+
     # Las medias del periodo previo son la cruz del mapa de recuperación: sin
     # ellas la gráfica no tiene contra qué comparar y no se dibuja.
     baselines = ({"rhr": base_stats["rhr"], "hrv": base_stats["hrv"],
@@ -1932,7 +2051,8 @@ def build_report(conn: sqlite3.Connection, start: date, end: date,
                                   baselines=baselines,
                                   intensity_map=intensity_map,
                                   vo2max=vo2max,
-                                  race_pred=race_pred)
+                                  race_pred=race_pred,
+                                  traffic_light=traffic_light)
 
 
 # ---------------------------------------------------------------------------

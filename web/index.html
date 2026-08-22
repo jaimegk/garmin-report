@@ -1,0 +1,292 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>BioDelta · Visor de Salud y Rendimiento</title>
+  <link rel="icon" type="image/png" href="/assets/logo/favicon-64.png">
+  <link rel="stylesheet" href="/web/styles.css">
+  <script>
+    try {
+      var t = localStorage.getItem('biodelta-theme') || 'light';
+      if (t === 'dark') document.documentElement.dataset.theme = 'dark';
+    } catch(e) {}
+  </script>
+</head>
+<body>
+
+  <!-- Barra superior unificada de BioDelta -->
+  <header class="app-header">
+    <div class="app-header-in">
+      <div class="app-brand" id="brand-home" title="BioDelta">
+        <svg class="logo" viewBox="0 0 32 32" width="26" height="26" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M2 24H6L16 5L26 24H30" />
+          <path d="M11 24L14 17L17 27.5L19.5 21L22.5 24" />
+        </svg>
+        <span class="brand-name">BioDelta</span>
+      </div>
+
+      <!-- Controles de Time Travel / Navegación temporal -->
+      <div class="time-nav">
+        <button id="btn-prev-week" class="time-btn" title="Semana anterior (◀)" aria-label="Semana anterior">◀</button>
+        <div class="range-selector-wrap">
+          <select id="range-select" aria-label="Seleccionar semana o periodo">
+            <option value="loading">Cargando fechas...</option>
+          </select>
+        </div>
+        <button id="btn-next-week" class="time-btn" title="Semana siguiente (▶)" aria-label="Semana siguiente">▶</button>
+      </div>
+
+      <!-- Acciones y Herramientas -->
+      <div class="app-actions">
+        <button id="btn-open-sync" class="action-btn primary" title="Sincronizar con Garmin Connect">
+          <span class="icon">🔄</span> Sincronizar
+        </button>
+        <button id="btn-open-upload" class="action-btn" title="Cargar archivo garmin_data.db">
+          <span class="icon">📁</span> Cargar
+        </button>
+        <button id="btn-open-demo" class="action-btn" title="Probar con datos sintéticos de demostración">
+          <span class="icon">✨</span> Demo
+        </button>
+        <button id="btn-open-glossary" class="action-btn" title="Glosario explicativo de métricas de salud">
+          <span class="icon">📖</span> Glosario
+        </button>
+        <button id="btn-open-settings" class="action-btn" title="Ajustes y objetivos de salud">
+          <span class="icon">⚙️</span>
+        </button>
+        <button id="btn-print" class="action-btn" title="Exportar a PDF o Imprimir">
+          <span class="icon">🖨️</span>
+        </button>
+        <button id="theme-btn" class="theme-toggle" type="button" aria-label="Cambiar tema claro/oscuro">
+          ☾ Oscuro
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <!-- Contenedor Principal del Dashboard -->
+  <main class="app-main" id="main-content">
+    
+    <!-- Estado de Carga -->
+    <div id="loading-view" class="center-state" style="display: none;">
+      <div class="spinner"></div>
+      <p id="loading-msg">Generando informe de salud...</p>
+    </div>
+
+    <!-- Estado de Bienvenida / Onboarding Zero-Tech -->
+    <div id="onboarding-view" class="center-state" style="display: none;">
+      <div class="onboarding-card">
+        <div class="onboarding-badge">👋 ¡Bienvenido a BioDelta!</div>
+        <h2>Tus métricas de salud de Garmin, claras y privadas</h2>
+        <p class="onboarding-subtitle">100% local en tu dispositivo, sin servidores externos. Elige cómo empezar:</p>
+        
+        <div class="onboarding-grid">
+          <div class="onboarding-option" id="card-connect-garmin">
+            <span class="option-icon">🔐</span>
+            <h3>Conectar con Garmin</h3>
+            <p>Introduce tu cuenta de Garmin Connect para sincronizar automáticamente con soporte 2FA.</p>
+            <button class="btn primary">Conectar Garmin</button>
+          </div>
+
+          <div class="onboarding-option" id="card-upload-file">
+            <span class="option-icon">📂</span>
+            <h3>Cargar Base de Datos</h3>
+            <p>Arrastra tu archivo <code>garmin_data.db</code> existente para visualizarlo al instante.</p>
+            <button class="btn secondary">Subir Archivo</button>
+          </div>
+
+          <div class="onboarding-option" id="card-demo-mode">
+            <span class="option-icon">✨</span>
+            <h3>Modo Demostración</h3>
+            <p>Explora un informe completo con datos sintéticos de prueba sin necesidad de reloj.</p>
+            <button class="btn secondary">Ver Demo</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Visor del Dashboard de Informe -->
+    <div id="report-view">
+      <div id="report-container" class="report-content"></div>
+    </div>
+
+  </main>
+
+  <!-- Modal 1: Sincronización y Autenticación Garmin -->
+  <div id="modal-sync" class="modal-overlay" aria-hidden="true">
+    <div class="modal-box">
+      <div class="modal-head">
+        <h3>🔄 Sincronizar con Garmin Connect</h3>
+        <button class="btn-close" data-close="modal-sync">✕</button>
+      </div>
+      
+      <div class="modal-tabs">
+        <button class="tab-btn active" data-tab="sync-tab-auto">Sincronización</button>
+        <button class="tab-btn" data-tab="sync-tab-login">Cuenta / Login</button>
+      </div>
+
+      <div class="modal-body">
+        <!-- Pestaña Sincronizar -->
+        <div id="sync-tab-auto" class="tab-content active">
+          <div id="sync-auth-status" class="status-banner">
+            <span class="status-indicator">●</span>
+            <span id="sync-auth-text">Comprobando sesión de Garmin...</span>
+          </div>
+
+          <div class="form-group">
+            <label for="sync-start-date">Rango de fechas a extraer (opcional):</label>
+            <div class="date-row">
+              <input type="date" id="sync-start-date" placeholder="Desde">
+              <span>hasta</span>
+              <input type="date" id="sync-end-date" placeholder="Hasta">
+            </div>
+            <small class="form-help">Si lo dejas en blanco, Garmin traerá de forma incremental los datos más recientes.</small>
+          </div>
+
+          <button id="btn-start-sync" class="btn primary full-width">
+            Iniciar Sincronización
+          </button>
+
+          <div id="sync-progress" class="sync-progress-box" style="display: none;">
+            <div class="progress-bar-wrap">
+              <div class="progress-bar-indeterminate"></div>
+            </div>
+            <p id="sync-progress-msg">Conectando con Garmin Connect...</p>
+          </div>
+        </div>
+
+        <!-- Pestaña Login / Credenciales -->
+        <div id="sync-tab-login" class="tab-content">
+          <form id="form-garmin-login">
+            <div class="form-group">
+              <label for="login-email">Email de Garmin Connect:</label>
+              <input type="email" id="login-email" required placeholder="tu@email.com" autocomplete="username">
+            </div>
+
+            <div class="form-group">
+              <label for="login-password">Contraseña:</label>
+              <input type="password" id="login-password" required placeholder="••••••••" autocomplete="current-password">
+            </div>
+
+            <p class="privacy-note">
+              🔒 Tus credenciales se utilizan exclusivamente para obtener la sesión de Garmin localmente y nunca se envían a terceros.
+            </p>
+
+            <button type="submit" id="btn-submit-login" class="btn primary full-width">
+              Conectar y Autenticar
+            </button>
+          </form>
+        </div>
+
+        <!-- Sub-formulario 2FA (aparece cuando Garmin requiere verificación) -->
+        <div id="sync-mfa-box" class="mfa-box" style="display: none;">
+          <div class="mfa-header">
+            <span class="mfa-icon">📱</span>
+            <h4>Verificación en Dos Pasos (2FA)</h4>
+          </div>
+          <p id="mfa-instructions">Introduce el código de seguridad que Garmin ha enviado a tu teléfono o correo electrónico:</p>
+          <div class="mfa-input-row">
+            <input type="text" id="mfa-code" placeholder="123456" maxlength="8" autocomplete="one-time-code">
+            <button id="btn-submit-mfa" class="btn primary">Verificar</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal 2: Cargar Archivo SQLite (Drag & Drop) -->
+  <div id="modal-upload" class="modal-overlay" aria-hidden="true">
+    <div class="modal-box">
+      <div class="modal-head">
+        <h3>📁 Cargar Base de Datos</h3>
+        <button class="btn-close" data-close="modal-upload">✕</button>
+      </div>
+      <div class="modal-body">
+        <div id="drop-zone" class="drop-zone">
+          <span class="drop-icon">📦</span>
+          <h4>Arrastra aquí tu archivo <code>garmin_data.db</code></h4>
+          <p>o haz clic para buscarlo en tu ordenador</p>
+          <input type="file" id="file-input" accept=".db,.sqlite,.sqlite3" style="display: none;">
+          <button type="button" id="btn-browse-file" class="btn secondary">Seleccionar archivo</button>
+        </div>
+        <div id="upload-status" class="upload-status-box" style="display: none;"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal 3: Glosario de Salud Interactivo -->
+  <div id="modal-glossary" class="modal-overlay" aria-hidden="true">
+    <div class="modal-box wide">
+      <div class="modal-head">
+        <h3>📖 Glosario de Métricas y Salud</h3>
+        <button class="btn-close" data-close="modal-glossary">✕</button>
+      </div>
+      <div class="modal-filter-bar">
+        <input type="search" id="modal-glossary-search" placeholder="🔍 Buscar métrica o concepto (ej. SRI, HRV, ACWR)...">
+        <div class="glossary-categories" id="glossary-cats">
+          <button type="button" class="cat-pill active" data-cat="all">Todos</button>
+          <button type="button" class="cat-pill" data-cat="Sueño">Sueño</button>
+          <button type="button" class="cat-pill" data-cat="Cardiovascular">Cardiovascular</button>
+          <button type="button" class="cat-pill" data-cat="Carga y Rendimiento">Carga</button>
+          <button type="button" class="cat-pill" data-cat="Bienestar">Bienestar</button>
+        </div>
+      </div>
+      <div class="modal-body scrollable">
+        <div id="glossary-cards-container" class="glossary-grid"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal 4: Ajustes y Objetivos Personalizados -->
+  <div id="modal-settings" class="modal-overlay" aria-hidden="true">
+    <div class="modal-box">
+      <div class="modal-head">
+        <h3>⚙️ Ajustes y Objetivos</h3>
+        <button class="btn-close" data-close="modal-settings">✕</button>
+      </div>
+      <div class="modal-body">
+        <form id="form-settings">
+          <div class="form-group">
+            <label for="set-sleep">Objetivo de sueño por noche:</label>
+            <select id="set-sleep">
+              <option value="7.0">7 horas</option>
+              <option value="7.5">7 horas 30 min</option>
+              <option value="8.0" selected>8 horas (Recomendado)</option>
+              <option value="8.5">8 horas 30 min</option>
+              <option value="9.0">9 horas</option>
+            </select>
+          </div>
+
+          <div class="form-group">
+            <label for="set-steps">Objetivo de pasos diarios:</label>
+            <select id="set-steps">
+              <option value="6000">6.000 pasos</option>
+              <option value="8000">8.000 pasos</option>
+              <option value="10000" selected>10.000 pasos (Recomendado)</option>
+              <option value="12000">12.000 pasos</option>
+              <option value="15000">15.000 pasos</option>
+            </select>
+          </div>
+
+          <div class="form-group">
+            <label for="set-intensity">Objetivo semanal de intensidad (OMS):</label>
+            <select id="set-intensity">
+              <option value="150" selected>150 min / semana (Mínimo OMS)</option>
+              <option value="225">225 min / semana</option>
+              <option value="300">300 min / semana (Deportista)</option>
+              <option value="450">450 min / semana (Alto rendimiento)</option>
+            </select>
+          </div>
+
+          <button type="submit" class="btn primary full-width">Guardar Preferencias</button>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <!-- Contenedor de Notificaciones Toast -->
+  <div id="toast-container" class="toast-container"></div>
+
+  <script src="/web/app.js"></script>
+</body>
+</html>

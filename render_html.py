@@ -185,9 +185,11 @@ def svg_line(title, labels, values, name, unit="", fmt=None, ylim=None,
     for i, v in enumerate(values):
         if v is None:
             continue
+        tip_text = f"{labels[i]}: {fmt(v)}{unit}"
         parts.append(
-            f'<circle cx="{px(i):.1f}" cy="{py(v):.1f}" r="4" class="dot">'
-            f'<title>{_esc(f"{labels[i]}: {fmt(v)}{unit}")}</title></circle>'
+            f'<circle cx="{px(i):.1f}" cy="{py(v):.1f}" r="4" class="dot"'
+            f' data-day-idx="{i}" data-day="{_esc(labels[i])}" data-tip="{_esc(tip_text)}">'
+            f'<title>{_esc(tip_text)}</title></circle>'
         )
     return _frame(title, "".join(parts), note=band_label)
 
@@ -223,7 +225,7 @@ def svg_sleep_timeline(title, labels, nights, fmt_dur) -> str:
         y = pad_t + i * row_h
         parts.append(
             f'<text x="{pad_l - 8}" y="{y + row_h / 2 + 4:.1f}" text-anchor="end"'
-            f' class="tick">{_esc(lab)}</text>'
+            f' class="tick" data-day-idx="{i}">{_esc(lab)}</text>'
         )
         start, end = _parse_ts(n.start_ts) if n else None, _parse_ts(n.end_ts) if n else None
         if not (n and start and end and end > start):
@@ -245,7 +247,7 @@ def svg_sleep_timeline(title, labels, nights, fmt_dur) -> str:
                   ("awake", n.awake_s)]
         tip = (f"{lab}: {start:%H:%M} → {end:%H:%M} · {fmt_dur(n.sleep_s)}"
                if n.sleep_s else f"{lab}: {start:%H:%M} → {end:%H:%M}")
-        parts.append(f'<g><title>{_esc(tip)}</title>')
+        parts.append(f'<g data-day-idx="{i}" data-day="{_esc(lab)}" data-tip="{_esc(tip)}"><title>{_esc(tip)}</title>')
         cursor = x0
         for cls, secs in phases:
             if not secs:
@@ -364,10 +366,12 @@ def svg_recovery_map(title, labels, rhr, hrv, base_rhr, base_hrv, swc_low=None, 
         cls_dot = "dot last" if last else "dot"
         lbl = f"{labels[i]} (hoy)" if last else labels[i]
         lbl_cls = "tick strong" if last else "tick"
+        tip_text = f"{labels[i]}: {round(rhr[i])} bpm · {round(hrv[i])} ms"
         parts.append(
-            f'<circle cx="{px(rhr[i]):.1f}" cy="{py(hrv[i]):.1f}" r="{dot_r}" class="{cls_dot}">'
-            f'<title>{_esc(f"{labels[i]}: {round(rhr[i])} bpm · {round(hrv[i])} ms")}</title></circle>'
-            f'<text x="{px(rhr[i]):.1f}" y="{py(hrv[i]) - (10 if last else 7):.1f}" class="{lbl_cls}" text-anchor="middle">{_esc(lbl)}</text>'
+            f'<circle cx="{px(rhr[i]):.1f}" cy="{py(hrv[i]):.1f}" r="{dot_r}" class="{cls_dot}"'
+            f' data-day-idx="{i}" data-day="{_esc(labels[i])}" data-tip="{_esc(tip_text)}">'
+            f'<title>{_esc(tip_text)}</title></circle>'
+            f'<text x="{px(rhr[i]):.1f}" y="{py(hrv[i]) - (10 if last else 7):.1f}" class="{lbl_cls}" text-anchor="middle" data-day-idx="{i}">{_esc(lbl)}</text>'
         )
 
     swc_note = f" · Banda SWC HRV: {round(swc_low)}–{round(swc_high)} ms" if (swc_low and swc_high) else ""
@@ -408,15 +412,17 @@ def svg_week_wheel(title, labels, values, goal=None, unit="") -> str:
             xa, ya = pt(a0 + 90, r)
             xb, yb = pt(a1 + 90, r)
             good = " good" if goal and v >= goal else ""
+            tip_text = f"{labels[i]}: {v:,.0f}{unit}".replace(",", ".")
             parts.append(
                 f'<path d="M{x0o:.1f},{y0o:.1f} L{xa:.1f},{ya:.1f}'
                 f' A{r:.1f},{r:.1f} 0 0 1 {xb:.1f},{yb:.1f} L{x1o:.1f},{y1o:.1f}'
-                f' A{r0},{r0} 0 0 0 {x0o:.1f},{y0o:.1f} Z" class="wedge{good}">'
-                f'<title>{_esc(f"{labels[i]}: {v:,.0f}{unit}".replace(",", "."))}</title></path>'
+                f' A{r0},{r0} 0 0 0 {x0o:.1f},{y0o:.1f} Z" class="wedge{good}"'
+                f' data-day-idx="{i}" data-day="{_esc(labels[i])}" data-tip="{_esc(tip_text)}">'
+                f'<title>{_esc(tip_text)}</title></path>'
             )
         parts.append(
-            f'<text x="{lx:.1f}" y="{ly + 4:.1f}" class="tick {cls}" text-anchor="middle">'
-            f'{_esc(labels[i])}</text>'
+            f'<text x="{lx:.1f}" y="{ly + 4:.1f}" class="tick {cls}" text-anchor="middle"'
+            f' data-day-idx="{i}">{_esc(labels[i])}</text>'
         )
     avg = sum(vals) / len(vals)
     parts.append(
@@ -446,10 +452,12 @@ def svg_battery_range(title, labels, lows, highs, stress) -> str:
     for i, lab in enumerate(labels):
         if lows[i] is not None and highs[i] is not None:
             y0, y1 = py(highs[i]), py(lows[i])
+            tip_text = f"{lab} · Body Battery {round(lows[i])}–{round(highs[i])}"
             parts.append(
                 f'<rect x="{px(i) - bw / 2:.1f}" y="{y0:.1f}" width="{bw:.1f}"'
-                f' height="{max(y1 - y0, 2):.1f}" rx="{bw / 2:.1f}" class="bb-range">'
-                f'<title>{_esc(f"{lab} · Body Battery {round(lows[i])}–{round(highs[i])}")}</title>'
+                f' height="{max(y1 - y0, 2):.1f}" rx="{bw / 2:.1f}" class="bb-range"'
+                f' data-day-idx="{i}" data-day="{_esc(lab)}" data-tip="{_esc(tip_text)}">'
+                f'<title>{_esc(tip_text)}</title>'
                 f'</rect>'
             )
     run = [f"{px(i):.1f},{py(v):.1f}" for i, v in enumerate(stress) if v is not None]
@@ -458,9 +466,11 @@ def svg_battery_range(title, labels, lows, highs, stress) -> str:
     for i, v in enumerate(stress):
         if v is None:
             continue
+        tip_text = f"{labels[i]} · Estrés {round(v)}"
         parts.append(
-            f'<circle cx="{px(i):.1f}" cy="{py(v):.1f}" r="4" class="dot stress">'
-            f'<title>{_esc(f"{labels[i]} · Estrés {round(v)}")}</title></circle>'
+            f'<circle cx="{px(i):.1f}" cy="{py(v):.1f}" r="4" class="dot stress"'
+            f' data-day-idx="{i}" data-day="{_esc(labels[i])}" data-tip="{_esc(tip_text)}">'
+            f'<title>{_esc(tip_text)}</title></circle>'
         )
     items = [("Body Battery (mín–máx)", "var(--bb)"), ("Estrés medio", "var(--accent-warm)")]
     return _frame(title, "".join(parts), items)
@@ -515,10 +525,12 @@ def svg_spo2_resp(title, labels, spo2_mins, spo2_avgs, resp_avgs) -> str:
         s_avg = spo2_avgs[i]
         if s_min is not None and s_avg is not None:
             y0, y1 = py_spo2(s_avg), py_spo2(s_min)
+            tip_text = f"{lab} · SpO2 {round(s_min)}%–{round(s_avg)}%"
             parts.append(
                 f'<rect x="{px(i) - bw / 2:.1f}" y="{y0:.1f}" width="{bw:.1f}"'
-                f' height="{max(y1 - y0, 3):.1f}" rx="{bw / 2:.1f}" class="spo2-bar">'
-                f'<title>{_esc(f"{lab} · SpO2 {round(s_min)}%–{round(s_avg)}%")}</title>'
+                f' height="{max(y1 - y0, 3):.1f}" rx="{bw / 2:.1f}" class="spo2-bar"'
+                f' data-day-idx="{i}" data-day="{_esc(lab)}" data-tip="{_esc(tip_text)}">'
+                f'<title>{_esc(tip_text)}</title>'
                 f'</rect>'
             )
 
@@ -528,9 +540,11 @@ def svg_spo2_resp(title, labels, spo2_mins, spo2_avgs, resp_avgs) -> str:
     for i, v in enumerate(resp_avgs):
         if v is None:
             continue
+        tip_text = f"{labels[i]} · Respiración {v:.1f} resp/min"
         parts.append(
-            f'<circle cx="{px(i):.1f}" cy="{py_resp(v):.1f}" r="4" class="dot resp">'
-            f'<title>{_esc(f"{labels[i]} · Respiración {v:.1f} resp/min")}</title></circle>'
+            f'<circle cx="{px(i):.1f}" cy="{py_resp(v):.1f}" r="4" class="dot resp"'
+            f' data-day-idx="{i}" data-day="{_esc(labels[i])}" data-tip="{_esc(tip_text)}">'
+            f'<title>{_esc(tip_text)}</title></circle>'
         )
 
     items = [("SpO2 mín–media (eje izq.)", "var(--accent)"),
@@ -569,10 +583,12 @@ def svg_intensity_bars(title, labels, values, goal=None) -> str:
             continue
         y = py(v)
         good = " good" if goal and v >= goal else ""
+        tip_text = f"{labels[i]}: {round(v)} min"
         parts.append(
             f'<rect x="{px(i) - bw / 2:.1f}" y="{y:.1f}" width="{bw:.1f}"'
-            f' height="{max(y_base - y, 2):.1f}" rx="3" class="int-bar{good}">'
-            f'<title>{_esc(f"{labels[i]}: {round(v)} min")}</title></rect>'
+            f' height="{max(y_base - y, 2):.1f}" rx="3" class="int-bar{good}"'
+            f' data-day-idx="{i}" data-day="{_esc(labels[i])}" data-tip="{_esc(tip_text)}">'
+            f'<title>{_esc(tip_text)}</title></rect>'
         )
 
     tot = sum(v for v in values if v)
@@ -717,6 +733,171 @@ def build_charts(sleep_rows, stress_map, bb_map, steps_map, start: date, end: da
         charts["Forma física"] = fit_grid
 
     return charts
+
+
+# ---------------------------------------------------------------------------
+# Glosario y Explicaciones Educativas de Métricas
+# ---------------------------------------------------------------------------
+
+METRIC_EXPLANATIONS = {
+    "sri": {
+        "title": "Índice de Regularidad del Sueño (SRI)",
+        "category": "Sueño",
+        "what": "Mide la probabilidad de que estés en el mismo estado (dormido o despierto) a la misma hora en dos días consecutivos (escala 0–100).",
+        "why": "Estudios científicos demuestran que un ritmo circadiano regular reduce la mortalidad prematura y el riesgo cardiovascular tanto o más que la propia duración del sueño.",
+        "range": ">80 es óptimo, 70–80 adecuado, <68 irregular."
+    },
+    "acwr": {
+        "title": "Ratio de Carga Aguda:Crónica (ACWR)",
+        "category": "Carga y Rendimiento",
+        "what": "Relación entre la carga de entrenamiento de los últimos 7 días (aguda) y las últimas 4 semanas (crónica) calculada mediante medias móviles ponderadas (EWMA).",
+        "why": "Delimita el 'punto dulce' del entrenamiento: progresar en resistencia o fuerza minimizando el riesgo de lesiones y sobreentrenamiento.",
+        "range": "0.80 a 1.30 es óptimo (zona segura); 1.30 a 1.50 sobrecarga progresiva alta; >1.50 zona de peligro de lesión."
+    },
+    "hrv": {
+        "title": "Variabilidad de Frecuencia Cardíaca (HRV / RMSSD)",
+        "category": "Cardiovascular",
+        "what": "Mide las variaciones milisegundo a milisegundo entre latidos cardíacos sucesivos durante el descanso nocturno profundo.",
+        "why": "Es el reflejo directo más sensible de la activación del sistema nervioso parasimpático (freno vagal y capacidad de regeneración).",
+        "range": "Un HRV elevado respecto a tu línea base indica frescura y adaptación; una caída sostenida indica fatiga o estrés."
+    },
+    "hrv_cv": {
+        "title": "Estabilidad / Dispersión de HRV (CV)",
+        "category": "Cardiovascular",
+        "what": "Coeficiente de variación (desviación típica dividida por la media) del HRV nocturno a lo largo de la semana.",
+        "why": "Grandes oscilaciones diarias (>10%) señalan inestabilidad autonómica y cansancio acumulado no asimilado.",
+        "range": "<6.5% muy estable, 6.5–10% normal, >10.5% inestable."
+    },
+    "rhr": {
+        "title": "Frecuencia Cardíaca en Reposo (FC Reposo)",
+        "category": "Cardiovascular",
+        "what": "Pulsaciones por minuto más bajas registradas durante el sueño o en reposo absoluto.",
+        "why": "Un incremento persistente (+3 a +5 bpm sobre tu media histórica) es un aviso temprano de fatiga, deshidratación o el inicio de una infección.",
+        "range": "Una FC en reposo baja y estable es señal de excelente adaptación cardiovascular."
+    },
+    "swc": {
+        "title": "Cambio Mínimo Significativo (SWC)",
+        "category": "Cardiovascular",
+        "what": "Banda estadística (±0.5 desviaciones típicas de tu histórico) que define tu ventana de fluctuación fisiológica normal.",
+        "why": "Evita sobre-reaccionar a variaciones aleatorias de un solo día y resalta los cambios verdaderamente relevantes.",
+        "range": "Dentro del pasillo sombreado = equilibrio; por debajo = alerta de fatiga; por encima = supercompensación."
+    },
+    "decoupling": {
+        "title": "Desacoplamiento / Deriva Aeróbica",
+        "category": "Carga y Rendimiento",
+        "what": "Aumento progresivo de la frecuencia cardíaca mientras la velocidad o potencia se mantiene constante durante una actividad aeróbica (>25 min).",
+        "why": "Mide la resistencia cardiovascular y la eficiencia metabólica celular.",
+        "range": "<3.5% excelente adaptación aeróbica; 3.5–5% normal; >7.5% deriva elevada por fatiga, calor o deshidratación."
+    },
+    "gct": {
+        "title": "Tiempo de Contacto con el Suelo y Asimetría",
+        "category": "Carga y Rendimiento",
+        "what": "Milisegundos que el pie permanece apoyado en cada zancada y el balance porcentual izquierdo/derecho durante la carrera.",
+        "why": "Permite detectar descompensaciones biomecánicas tempranas antes de que originen una tendinopatía o lesión articular.",
+        "range": "Simetría ideal entre 49.5% y 50.5% por pierna."
+    },
+    "bb": {
+        "title": "Body Battery y Nivel de Estrés",
+        "category": "Bienestar",
+        "what": "Puntuación de energía corporal (1 a 100) calculada a partir de HRV, estrés, sueño y actividad.",
+        "why": "Permite gestionar el ritmo de la jornada: empezar el día por encima de 75 puntos garantiza reservas para entrenar y trabajar.",
+        "range": "Recarga nocturna deseada >60 puntos; estrés diurno medio <30."
+    },
+    "spo2": {
+        "title": "SpO2 Nocturna y Frecuencia Respiratoria",
+        "category": "Bienestar",
+        "what": "Saturación de oxígeno en sangre (%) y respiraciones por minuto durante el descanso nocturno.",
+        "why": "Cribado no diagnóstico de alteraciones respiratorias nocturnas (como hipopneas/apneas) o sobrecargas inflamatorias.",
+        "range": "SpO2 media >94% es normal; frecuencia respiratoria habitual entre 12 y 18 resp/min."
+    },
+    "vo2max": {
+        "title": "Consumo Máximo de Oxígeno (VO2máx)",
+        "category": "Cardiovascular",
+        "what": "Volumen máximo de oxígeno (ml/kg/min) que tu cuerpo puede transportar y utilizar en esfuerzo máximo.",
+        "why": "El parámetro clínico con mayor evidencia científica sobre longevidad y reducción de riesgo por cualquier causa.",
+        "range": "A mayor VO2máx, mayor esperanza de vida y reserva fisiológica."
+    }
+}
+
+
+def status_card_html(tl: dict | None) -> str:
+    """Semáforo de salud y diagnóstico en lenguaje natural (Fase 1 Usabilidad)."""
+    if not tl:
+        return ""
+    state = tl.get("state", "optimal")
+    badge = tl.get("badge", "🟢")
+    title = tl.get("title", "Estado óptimo")
+    sleep_diag = tl.get("sleep_diag", "")
+    recovery_diag = tl.get("recovery_diag", "")
+    recommendation = tl.get("recommendation", "")
+    return (
+        f'<div class="status-card status-{_esc(state)}">'
+        f'<div class="status-header">'
+        f'<span class="status-badge" aria-hidden="true">{badge}</span>'
+        f'<div class="status-title-group">'
+        f'<span class="status-kicker">Evaluación de Estado</span>'
+        f'<h3 class="status-title">{_esc(title)}</h3>'
+        f'</div>'
+        f'</div>'
+        f'<div class="status-grid">'
+        f'<div class="status-item">'
+        f'<span class="status-icon" aria-hidden="true">🌙</span>'
+        f'<div><strong>Sueño:</strong> {_esc(sleep_diag)}</div>'
+        f'</div>'
+        f'<div class="status-item">'
+        f'<span class="status-icon" aria-hidden="true">⚡</span>'
+        f'<div><strong>Recuperación y Estrés:</strong> {_esc(recovery_diag)}</div>'
+        f'</div>'
+        f'<div class="status-item highlight">'
+        f'<span class="status-icon" aria-hidden="true">🎯</span>'
+        f'<div><strong>Recomendación:</strong> {_esc(recommendation)}</div>'
+        f'</div>'
+        f'</div>'
+        f'</div>'
+    )
+
+
+def glossary_modal_html() -> str:
+    """Modal interactivo con el glosario de términos de salud y longevidad."""
+    cards = []
+    for key, item in METRIC_EXPLANATIONS.items():
+        cards.append(
+            f'<article class="glossary-card" data-category="{_esc(item["category"])}">'
+            f'<div class="glossary-card-header">'
+            f'<h4>{_esc(item["title"])}</h4>'
+            f'<span class="glossary-badge">{_esc(item["category"])}</span>'
+            f'</div>'
+            f'<p><strong>¿Qué es?</strong> {_esc(item["what"])}</p>'
+            f'<p><strong>¿Por qué importa?</strong> {_esc(item["why"])}</p>'
+            f'<p class="glossary-range"><strong>Rango orientativo:</strong> {_esc(item["range"])}</p>'
+            f'</article>'
+        )
+    return (
+        '<div id="glossary-modal" class="modal-backdrop" aria-hidden="true" role="dialog" aria-label="Glosario de Métricas">'
+        '<div class="modal-dialog">'
+        '<div class="modal-header">'
+        '<h3>📖 Glosario de Métricas y Salud</h3>'
+        '<button type="button" class="modal-close" id="glossary-close" aria-label="Cerrar glosario">✕</button>'
+        '</div>'
+        '<div class="modal-filter-bar">'
+        '<input type="search" id="glossary-search" placeholder="🔍 Buscar métrica o concepto..." aria-label="Buscar en el glosario">'
+        '<div class="glossary-categories">'
+        '<button type="button" class="cat-pill active" data-cat="all">Todos</button>'
+        '<button type="button" class="cat-pill" data-cat="Sueño">Sueño</button>'
+        '<button type="button" class="cat-pill" data-cat="Cardiovascular">Cardiovascular</button>'
+        '<button type="button" class="cat-pill" data-cat="Carga y Rendimiento">Carga</button>'
+        '<button type="button" class="cat-pill" data-cat="Bienestar">Bienestar</button>'
+        '</div>'
+        '</div>'
+        f'<div class="glossary-grid">{"".join(cards)}</div>'
+        '</div>'
+        '</div>'
+    )
+
+
+def tooltip_html() -> str:
+    """Contenedor flotante para tooltips enriquecidos e interactividad táctil."""
+    return '<div id="biodelta-tooltip" class="tooltip-popover" aria-hidden="true"></div>'
 
 
 # ---------------------------------------------------------------------------
@@ -1083,7 +1264,7 @@ td, th, .num { font-variant-numeric: tabular-nums; }
           -webkit-backdrop-filter: saturate(180%) blur(20px);
           border-bottom: 1px solid var(--hairline); }
 .topbar-in { max-width: 68rem; margin: 0 auto; height: 100%; padding: 0 1.5rem;
-             display: flex; align-items: center; gap: 1rem; }
+             display: flex; align-items: center; gap: 0.75rem; }
 .brand { font-size: .8rem; font-weight: 600; letter-spacing: -.01em; white-space: nowrap; flex-shrink: 0; }
 .navlinks { display: flex; gap: .85rem; overflow-x: auto; scrollbar-width: none;
             flex: 1; min-width: 0; }
@@ -1091,6 +1272,15 @@ td, th, .num { font-variant-numeric: tabular-nums; }
 .navlinks a { color: var(--ink2); text-decoration: none; font-size: .76rem;
               white-space: nowrap; flex-shrink: 0; }
 .navlinks a:hover { color: var(--ink); }
+
+/* Botones de navegación y utilidades */
+.nav-btn {
+  border: 1px solid var(--hairline); background: none;
+  color: var(--ink); border-radius: 980px; padding: .2rem .65rem;
+  font: inherit; font-size: .74rem; cursor: pointer; white-space: nowrap; flex-shrink: 0;
+  display: inline-flex; align-items: center; gap: .3rem;
+}
+.nav-btn:hover { background: var(--surface); }
 .theme-btn { margin-left: auto; border: 1px solid var(--hairline); background: none;
              color: var(--ink); border-radius: 980px; padding: .2rem .7rem;
              font: inherit; font-size: .74rem; cursor: pointer; white-space: nowrap; flex-shrink: 0; }
@@ -1105,6 +1295,78 @@ h1 { display: flex; align-items: center; gap: .55rem;
 .lede p { font-size: 1rem; line-height: 1.45; color: var(--ink2); margin: .3rem 0; }
 .lede em { font-size: 1rem; color: var(--muted); font-style: normal; }
 .lede strong { color: var(--ink); }
+
+/* Semáforo de Estado y Resumen Ejecutivo en Lenguaje Natural */
+.status-card {
+  border: 1px solid var(--hairline);
+  border-radius: 12px;
+  padding: 1.25rem 1.4rem;
+  margin: 1.25rem 0 1.75rem;
+  background: color-mix(in srgb, var(--paper) 85%, var(--grid));
+  position: relative;
+  overflow: hidden;
+}
+.status-card::before {
+  content: "";
+  position: absolute;
+  top: 0; left: 0; bottom: 0;
+  width: 5px;
+}
+.status-card.status-optimal::before { background: var(--good); }
+.status-card.status-warning::before { background: var(--warn); }
+.status-card.status-recovery::before { background: var(--bad); }
+
+.status-header {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin-bottom: 0.85rem;
+}
+.status-badge {
+  font-size: 1.45rem;
+  line-height: 1;
+}
+.status-title-group { display: flex; flex-direction: column; }
+.status-kicker {
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--muted);
+}
+.status-title {
+  font-size: 1.2rem;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  color: var(--ink);
+  margin: 0.1rem 0 0;
+  text-transform: none;
+}
+.status-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 0.55rem;
+}
+.status-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.65rem;
+  font-size: 0.92rem;
+  line-height: 1.45;
+  color: var(--ink2);
+}
+.status-item strong { color: var(--ink); }
+.status-item.highlight {
+  margin-top: 0.25rem;
+  padding-top: 0.65rem;
+  border-top: 1px solid color-mix(in srgb, var(--hairline) 60%, transparent);
+  color: var(--ink);
+}
+.status-icon {
+  font-size: 1.05rem;
+  line-height: 1.35;
+  flex-shrink: 0;
+}
 
 /* Secciones: título en un raíl fijo a la izquierda, contenido a la derecha */
 .sec { display: grid; grid-template-columns: 11rem 1fr; gap: 3rem;
@@ -1152,9 +1414,7 @@ a { color: var(--accent); }
                margin: .75rem 0 0; }
 @media (max-width: 62rem) { .hero { grid-template-columns: 1fr; gap: 0; } }
 
-/* Cifras: hoja de especificaciones a dos columnas, sin cajas. En columnas
-   (no en rejilla) porque las métricas son las que sean: una lista partida por
-   la mitad nunca deja un hueco a media fila. */
+/* Cifras: hoja de especificaciones a dos columnas, sin cajas. */
 .tiles { columns: 2; column-gap: 3rem; margin: 2.5rem 0 2rem; }
 .tile { break-inside: avoid; display: grid; column-gap: 1rem;
         grid-template-columns: 1fr auto minmax(4.5rem, auto);
@@ -1259,7 +1519,7 @@ details.collapsible .coll-body .tw {
   color: var(--ink2);
 }
 
-/* Tablas: filetes, sin cajas ni cebra */
+/* Tablas */
 .tw { overflow-x: auto; margin: 1.25rem 0 2rem; }
 table { border-collapse: collapse; width: 100%; font-size: .85rem; }
 th, td { padding: .6rem .9rem .6rem 0; white-space: nowrap;
@@ -1280,8 +1540,6 @@ tbody tr:last-child td { border-bottom: 1px solid var(--hairline); }
 .chart { margin: 1.5rem 0 2.5rem; }
 .pair { display: grid; gap: 1.5rem 2.5rem;
         grid-template-columns: repeat(auto-fit, minmax(19rem, 1fr)); }
-/* Al ir a media anchura el SVG se reduce casi a la mitad: sin compensar el
-   tamaño, las etiquetas de los ejes quedan en 6 px y no se leen. */
 .pair .tick { font-size: 19px; }
 .pair .dot { r: 5; }
 .chart.square { max-width: 24rem; }
@@ -1303,7 +1561,7 @@ figcaption.note { font-size: .76rem; font-weight: 400; color: var(--muted);
 .line { fill: none; stroke: var(--ink); stroke-width: 2;
         stroke-linejoin: round; stroke-linecap: round; }
 .line.stress { stroke: var(--accent-warm); stroke-width: 1.5; }
-.dot { fill: var(--ink); stroke: var(--paper); stroke-width: 2; }
+.dot { fill: var(--ink); stroke: var(--paper); stroke-width: 2; cursor: pointer; }
 .dot.stress { fill: var(--accent-warm); }
 .dot.last { fill: var(--accent); }
 .trail { fill: none; stroke: var(--muted); stroke-width: 1.5; opacity: .55;
@@ -1334,6 +1592,148 @@ figcaption.note { font-size: .76rem; font-weight: 400; color: var(--muted);
 .wedge.good { fill: var(--ring-good); }
 .wheel-val { fill: var(--ink); font-size: 20px; font-weight: 700;
              letter-spacing: -.03em; font-family: inherit; }
+
+/* Sincronización entre gráficas */
+.is-synced-active {
+  stroke-width: 3.5 !important;
+  stroke: var(--accent) !important;
+  fill: var(--accent) !important;
+  filter: drop-shadow(0 0 4px var(--accent));
+  transition: all 0.15s ease;
+}
+rect.is-synced-active {
+  stroke-width: 2 !important;
+  stroke: var(--ink) !important;
+  opacity: 1 !important;
+}
+
+/* Tooltip flotante enriquecido */
+.tooltip-popover {
+  position: fixed; z-index: 90;
+  pointer-events: none;
+  background: var(--ink); color: var(--paper);
+  padding: 0.45rem 0.75rem; border-radius: 6px;
+  font-size: 0.76rem; line-height: 1.35;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.18);
+  opacity: 0; transform: translateY(4px);
+  transition: opacity 0.12s ease, transform 0.12s ease;
+  white-space: pre-line; max-width: 18rem;
+}
+.tooltip-popover.is-visible {
+  opacity: 1; transform: translateY(0);
+}
+
+/* Modal de Glosario */
+.modal-backdrop {
+  position: fixed; inset: 0; z-index: 100;
+  background: rgba(0, 0, 0, 0.45);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  display: none;
+  align-items: center; justify-content: center;
+  padding: 1.5rem;
+}
+.modal-backdrop.is-open { display: flex; }
+.modal-dialog {
+  background: var(--paper);
+  border: 1px solid var(--hairline);
+  border-radius: 14px;
+  width: 100%; max-width: 48rem;
+  max-height: 85vh;
+  display: flex; flex-direction: column;
+  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.2);
+  overflow: hidden;
+}
+.modal-header {
+  padding: 1.2rem 1.5rem;
+  border-bottom: 1px solid var(--hairline);
+  display: flex; align-items: center; justify-content: space-between;
+}
+.modal-header h3 { margin: 0; font-size: 1.1rem; text-transform: none; color: var(--ink); }
+.modal-close {
+  background: none; border: none; font-size: 1.2rem;
+  color: var(--muted); cursor: pointer; padding: 0.2rem 0.5rem; border-radius: 6px;
+}
+.modal-close:hover { color: var(--ink); background: var(--surface); }
+.modal-filter-bar {
+  padding: 0.9rem 1.5rem;
+  border-bottom: 1px solid var(--grid);
+  display: flex; flex-direction: column; gap: 0.75rem;
+}
+#glossary-search {
+  width: 100%; padding: 0.55rem 0.85rem;
+  border: 1px solid var(--hairline); border-radius: 8px;
+  font-size: 0.88rem; background: var(--surface); color: var(--ink);
+  outline: none;
+}
+#glossary-search:focus { border-color: var(--accent); }
+.glossary-categories { display: flex; gap: 0.45rem; flex-wrap: wrap; }
+.cat-pill {
+  border: 1px solid var(--hairline); background: var(--paper);
+  color: var(--ink2); border-radius: 980px; padding: 0.2rem 0.65rem;
+  font-size: 0.74rem; cursor: pointer;
+}
+.cat-pill.active { background: var(--ink); color: var(--paper); border-color: var(--ink); }
+.glossary-grid {
+  padding: 1.5rem;
+  overflow-y: auto;
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(19rem, 1fr));
+  gap: 1rem;
+}
+.glossary-card {
+  border: 1px solid var(--hairline); border-radius: 10px;
+  padding: 1rem 1.1rem; background: var(--surface);
+  display: flex; flex-direction: column; gap: 0.4rem;
+}
+.glossary-card-header {
+  display: flex; justify-content: space-between; align-items: baseline; gap: 0.5rem;
+  margin-bottom: 0.2rem;
+}
+.glossary-card h4 { margin: 0; font-size: 0.92rem; font-weight: 700; color: var(--ink); }
+.glossary-badge {
+  font-size: 0.68rem; font-weight: 600; text-transform: uppercase;
+  color: var(--muted); letter-spacing: 0.04em;
+}
+.glossary-card p { margin: 0.15rem 0; font-size: 0.82rem; line-height: 1.4; color: var(--ink2); }
+.glossary-card p strong { color: var(--ink); }
+.glossary-range {
+  margin-top: 0.35rem; padding-top: 0.35rem;
+  border-top: 1px dashed var(--hairline); font-size: 0.78rem; color: var(--accent);
+}
+
+/* Modo Impresión / PDF */
+@media print {
+  body {
+    background: #ffffff !important;
+    color: #000000 !important;
+    padding: 0 !important;
+    font-size: 11pt !important;
+  }
+  .topbar, .theme-btn, .nav-btn, .modal-backdrop, .tooltip-popover, #theme-btn, #glossary-btn, #print-btn {
+    display: none !important;
+  }
+  .wrap { max-width: 100% !important; padding: 0 !important; margin: 0 !important; }
+  .lede { padding: 1rem 0 !important; }
+  .sec {
+    display: block !important;
+    padding: 1.25rem 0 0.5rem !important;
+    page-break-inside: avoid;
+    break-inside: avoid;
+  }
+  .sec-rail { position: static !important; margin-bottom: 0.5rem !important; }
+  .sec-rail h2 { font-size: 1.2rem !important; margin: 0 0 0.5rem !important; }
+  .hero, .tiles, .chart, .pair, .status-card, .fit-grid {
+    page-break-inside: avoid;
+    break-inside: avoid;
+  }
+  details.collapsible {
+    border: 1px solid #d2d2d7 !important;
+    page-break-inside: auto;
+  }
+  details.collapsible summary::before { display: none !important; }
+  details.collapsible summary { background: #f5f5f7 !important; color: #000 !important; }
+  .chart svg { max-width: 100% !important; height: auto !important; }
+}
 """
 
 THEME_JS = """
@@ -1342,14 +1742,108 @@ THEME_JS = """
   var btn = document.getElementById('theme-btn');
   function paint(t) {
     root.dataset.theme = t;
-    btn.textContent = t === 'dark' ? '☀ Claro' : '☾ Oscuro';
-    btn.setAttribute('aria-pressed', t === 'dark');
+    if (btn) {
+      btn.textContent = t === 'dark' ? '☀ Claro' : '☾ Oscuro';
+      btn.setAttribute('aria-pressed', t === 'dark');
+    }
   }
   paint(root.dataset.theme === 'dark' ? 'dark' : 'light');
-  btn.addEventListener('click', function () {
-    var next = root.dataset.theme === 'dark' ? 'light' : 'dark';
-    paint(next);
-    try { localStorage.setItem(key, next); } catch (e) {}
+  if (btn) {
+    btn.addEventListener('click', function () {
+      var next = root.dataset.theme === 'dark' ? 'light' : 'dark';
+      paint(next);
+      try { localStorage.setItem(key, next); } catch (e) {}
+    });
+  }
+
+  // 1. Sincronización de días entre gráficas y Tooltips
+  var tip = document.getElementById('biodelta-tooltip');
+  function showTip(text, x, y) {
+    if (!tip || !text) return;
+    tip.textContent = text;
+    tip.classList.add('is-visible');
+    var tw = tip.offsetWidth, th = tip.offsetHeight;
+    var px = Math.min(Math.max(x - tw / 2, 10), window.innerWidth - tw - 10);
+    var py = (y - th - 12 < 10) ? y + 20 : y - th - 12;
+    tip.style.left = px + 'px';
+    tip.style.top = py + 'px';
+  }
+  function hideTip() {
+    if (tip) tip.classList.remove('is-visible');
+  }
+
+  document.addEventListener('mouseover', function (e) {
+    var target = e.target.closest('[data-day-idx]');
+    if (!target) return;
+    var idx = target.getAttribute('data-day-idx');
+    var dayText = target.getAttribute('data-day') || '';
+    var tipText = target.getAttribute('data-tip') || (target.querySelector('title') ? target.querySelector('title').textContent : dayText);
+    
+    document.querySelectorAll('[data-day-idx="' + idx + '"]').forEach(function (el) {
+      el.classList.add('is-synced-active');
+    });
+    var rect = target.getBoundingClientRect();
+    showTip(tipText, rect.left + rect.width / 2, rect.top);
+  });
+
+  document.addEventListener('mouseout', function (e) {
+    var target = e.target.closest('[data-day-idx]');
+    if (!target) return;
+    var idx = target.getAttribute('data-day-idx');
+    document.querySelectorAll('[data-day-idx="' + idx + '"]').forEach(function (el) {
+      el.classList.remove('is-synced-active');
+    });
+    hideTip();
+  });
+
+  // 2. Glosario Modal
+  var gModal = document.getElementById('glossary-modal');
+  var gBtn = document.getElementById('glossary-btn');
+  var gClose = document.getElementById('glossary-close');
+  var gSearch = document.getElementById('glossary-search');
+  var gPills = document.querySelectorAll('.cat-pill');
+
+  function openGlossary() {
+    if (!gModal) return;
+    gModal.classList.add('is-open');
+    gModal.setAttribute('aria-hidden', 'false');
+    if (gSearch) { gSearch.value = ''; gSearch.focus(); filterCards(); }
+  }
+  function closeGlossary() {
+    if (!gModal) return;
+    gModal.classList.remove('is-open');
+    gModal.setAttribute('aria-hidden', 'true');
+  }
+  if (gBtn) gBtn.addEventListener('click', openGlossary);
+  if (gClose) gClose.addEventListener('click', closeGlossary);
+  if (gModal) {
+    gModal.addEventListener('click', function (e) {
+      if (e.target === gModal) closeGlossary();
+    });
+  }
+  document.addEventListener('keydown', function (e) {
+    if (e.key === 'Escape') closeGlossary();
+  });
+
+  var currentCat = 'all';
+  function filterCards() {
+    var query = (gSearch ? gSearch.value : '').toLowerCase().trim();
+    document.querySelectorAll('.glossary-card').forEach(function (card) {
+      var cat = card.getAttribute('data-category');
+      var matchCat = (currentCat === 'all' || cat === currentCat);
+      var matchText = !query || card.textContent.toLowerCase().includes(query);
+      card.style.display = (matchCat && matchText) ? 'flex' : 'none';
+    });
+  }
+
+  if (gSearch) gSearch.addEventListener('input', filterCards);
+  gPills.forEach(function (pill) {
+    pill.addEventListener('click', function () {
+      gPills.forEach(function (p) { p.classList.remove('active'); });
+      pill.classList.add('active');
+      currentCat = pill.getAttribute('data-cat') || 'all';
+      filterCards();
+    });
   });
 })();
 """
@@ -1398,6 +1892,8 @@ def _navbar(title: str, body: str) -> str:
         '<nav class="topbar"><div class="topbar-in">'
         f'<span class="brand">{_esc(title)}</span>'
         f'<div class="navlinks">{links}</div>'
+        '<button id="glossary-btn" class="nav-btn" type="button" aria-label="Abrir glosario de métricas">📖 Glosario</button>'
+        '<button id="print-btn" class="nav-btn" type="button" onclick="window.print()" aria-label="Imprimir o exportar a PDF">🖨️ Imprimir</button>'
         '<button id="theme-btn" class="theme-btn" type="button" aria-pressed="false">'
         '☾ Oscuro</button>'
         '</div></nav>'
@@ -1405,13 +1901,21 @@ def _navbar(title: str, body: str) -> str:
 
 
 def render(md: str, sleep_rows, stress_map, bb_map, steps_map, start: date, end: date,
-           tiles=(), rings=(), baselines=None, intensity_map=None, vo2max=None, race_pred=None) -> str:
+           tiles=(), rings=(), baselines=None, intensity_map=None, vo2max=None, race_pred=None,
+           traffic_light=None) -> str:
     charts = build_charts(sleep_rows, stress_map, bb_map, steps_map, start, end,
                           baselines, intensity_map=intensity_map, vo2max=vo2max, race_pred=race_pred)
-    # Anillos y cifras se inyectan como el resto: bajo el `## Resumen`, y en ese
-    # orden — primero el vistazo, después los números.
-    if rings or tiles:
-        charts["Resumen"] = rings_html(rings) + tiles_html(tiles)
+    # Semáforo de estado, anillos y cifras se inyectan bajo el `## Resumen`
+    resumen_parts = []
+    if traffic_light:
+        resumen_parts.append(status_card_html(traffic_light))
+    if rings:
+        resumen_parts.append(rings_html(rings))
+    if tiles:
+        resumen_parts.append(tiles_html(tiles))
+    if resumen_parts:
+        charts["Resumen"] = "".join(resumen_parts)
+
     title = f"Garmin log {start.isoformat()} – {end.isoformat()}"
     body = md_to_html(md, charts)
     body = body.replace("<h1>", f"<h1>{logo_svg()}", 1)
@@ -1428,5 +1932,7 @@ def render(md: str, sleep_rows, stress_map, bb_map, steps_map, start: date, end:
         f'<script>{THEME_BOOT}</script>\n</head>\n<body>\n'
         + _navbar(title, body)
         + '<main class="wrap">\n' + body + '\n</main>\n'
+        + glossary_modal_html()
+        + tooltip_html()
         + f'<script>{THEME_JS}</script>\n</body>\n</html>\n'
     )

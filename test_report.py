@@ -6,6 +6,7 @@ O bien:   pytest
 """
 
 import io
+import json
 import math
 import os
 import re
@@ -18,6 +19,7 @@ from datetime import date, datetime, timedelta
 from pathlib import Path
 from unittest.mock import patch, MagicMock
 
+import app
 import demo_data
 import generate_report
 import render_html
@@ -35,7 +37,7 @@ from generate_report import (
     add_min_hr, query_laps, query_floors, query_records, query_steps,
     metric_stats, baseline_range, _sum_dur, _sum_num, _sum_steps, _sum_reg,
     _clamp100, _band, weekly_breakdown, title_range, build_summary,
-    day_label, generate_md, main, NO_ACWR,
+    day_label, generate_md, main, NO_ACWR, compute_health_traffic_light,
 )
 from render_html import (
     md_to_html, svg_sleep_timeline, svg_week_wheel, svg_line,
@@ -44,6 +46,7 @@ from render_html import (
     _esc, _parse_ts, _median, _nice_bounds, _grid, _xlabels, _legend,
     _frame, _signal_class, _slug, _inline, _cell, _table,
     logo_svg, favicon_link, _navbar, render,
+    status_card_html, glossary_modal_html, tooltip_html, METRIC_EXPLANATIONS,
 )
 
 
@@ -1469,6 +1472,213 @@ def test_additional_coverage_cases():
 
     # md_to_html con sección vacía
     assert "<h2>Sueño</h2>" in md_to_html("## \n\n## Sueño\n\nTexto")
+
+
+def test_compute_health_traffic_light():
+    # 1. Estado óptimo
+    cur_opt = {"sleep_s": 8 * 3600, "score": 88, "sri": 85, "hrv": 65, "rhr": 45, "stress": 22, "acwr": 1.05}
+    base_opt = {"n_nights": 7, "sleep_s": 7.8 * 3600, "hrv": 62, "rhr": 46, "stress": 24}
+    tl_opt = compute_health_traffic_light(cur_opt, base_opt, ["✅ Buena semana de sueño y recuperación."])
+    assert tl_opt["state"] == "optimal"
+    assert tl_opt["badge"] == "🟢"
+    assert "Excelente duración" in tl_opt["sleep_diag"]
+    assert "preparado" in tl_opt["recommendation"].lower()
+
+    # 2. Estado atención / warning por déficit de sueño y estrés
+    cur_warn = {"sleep_s": 6.2 * 3600, "score": 68, "sri": 64, "hrv": 54, "rhr": 49, "stress": 42, "acwr": 1.45}
+    base_warn = {"n_nights": 7, "hrv": 60, "rhr": 46, "stress": 26}
+    flags_warn = ["⚠️ 2 noches por debajo de 6 h de sueño.", "⚠️ Estrés medio elevado."]
+    tl_warn = compute_health_traffic_light(cur_warn, base_warn, flags_warn)
+    assert tl_warn["state"] == "warning"
+    assert tl_warn["badge"] == "🟡"
+    assert "déficit" in tl_warn["sleep_diag"].lower()
+    assert "estrés" in tl_warn["recovery_diag"].lower()
+
+    # 3. Estado descanso / recovery por múltiples alertas o caída fuerte
+    cur_rec = {"sleep_s": 5.5 * 3600, "score": 50, "sri": 55, "hrv": 42, "rhr": 54, "stress": 48, "acwr": 1.6}
+    base_rec = {"n_nights": 7, "hrv": 62, "rhr": 46, "stress": 25}
+    flags_rec = ["⚠️ Alerta 1", "⚠️ Alerta 2", "⚠️ Alerta 3"]
+    tl_rec = compute_health_traffic_light(cur_rec, base_rec, flags_rec)
+    assert tl_rec["state"] == "recovery"
+    assert tl_rec["badge"] == "🔴"
+    assert "descanso" in tl_rec["recommendation"].lower()
+
+    # 4. Caso sin datos
+    tl_empty = compute_health_traffic_light({}, {}, [])
+    assert tl_empty["state"] in ("optimal", "warning")
+    assert "Sin registros" in tl_empty["sleep_diag"]
+
+
+def test_status_card_and_glossary_rendering():
+    # 1. status_card_html
+    assert status_card_html(None) == ""
+    tl = {
+        "state": "optimal",
+        "badge": "🟢",
+        "title": "Estado Óptimo",
+        "sleep_diag": "Excelente descanso",
+        "recovery_diag": "Sistema nervioso listo",
+        "recommendation": "Apto para entrenar",
+    }
+    card = status_card_html(tl)
+    assert "status-optimal" in card
+    assert "🟢" in card
+    assert "Excelente descanso" in card
+
+    # 2. glossary_modal_html & tooltip_html
+    g_html = glossary_modal_html()
+    assert "glossary-modal" in g_html
+    assert "Glosario de Métricas" in g_html
+    assert "SRI" in g_html
+    assert "ACWR" in g_html
+    assert "HRV" in g_html
+
+    t_html = tooltip_html()
+    assert "biodelta-tooltip" in t_html
+
+    # 3. METRIC_EXPLANATIONS
+    assert "sri" in METRIC_EXPLANATIONS
+    assert "acwr" in METRIC_EXPLANATIONS
+    assert "decoupling" in METRIC_EXPLANATIONS
+    assert "vo2max" in METRIC_EXPLANATIONS
+
+    # 4. render() incluye el semáforo y los componentes
+    full = render(
+        md="# Titulo\n\n## Resumen\n\nTexto\n\n## Sueño\n\nTexto",
+        sleep_rows=[], stress_map={}, bb_map={}, steps_map={},
+        start=date(2026, 6, 1), end=date(2026, 6, 7),
+        traffic_light=tl,
+    )
+    assert "status-card" in full
+    assert "glossary-modal" in full
+    assert "biodelta-tooltip" in full
+    assert "Glosario" in full
+
+
+def test_app_server_api_and_endpoints():
+    with tempfile.TemporaryDirectory() as tmp:
+        tmp_path = Path(tmp)
+        tmp_db = tmp_path / "test_garmin.db"
+        tmp_demo_db = tmp_path / "demo.db"
+        tmp_settings = tmp_path / "settings.json"
+
+        # Construir BD sintética para pruebas
+        demo_data.build(tmp_db)
+        demo_data.build(tmp_demo_db)
+
+        with patch("app.DB_PATH", tmp_db), \
+             patch("app.DEMO_DB_PATH", tmp_demo_db), \
+             patch("app.SETTINGS_PATH", tmp_settings):
+
+            # 1. Settings load / save
+            s = app.load_settings()
+            assert "sleep_target_hours" in s
+            s["sleep_target_hours"] = 7.5
+            saved = app.save_settings(s)
+            assert saved["sleep_target_hours"] == 7.5
+            assert app.load_settings()["sleep_target_hours"] == 7.5
+
+            # 2. get_db_date_range & get_available_weeks
+            min_d, max_d = app.get_db_date_range(tmp_db)
+            assert min_d is not None and max_d is not None
+            assert max_d >= min_d
+            weeks = app.get_available_weeks(tmp_db)
+            assert len(weeks) > 0
+            assert "start" in weeks[0] and "end" in weeks[0]
+
+            # 3. get_db_date_range con fichero inexistente
+            assert app.get_db_date_range(tmp_path / "inexistente.db") == (None, None)
+            assert app.get_available_weeks(tmp_path / "inexistente.db") == []
+
+            # 4. Probar BioDeltaRequestHandler mediante simulación
+            class DummyHandler(app.BioDeltaRequestHandler):
+                def __init__(self):
+                    self.sent_status = None
+                    self.sent_headers = {}
+                    self.sent_body = b""
+                def send_response(self, code, message=None):
+                    self.sent_status = code
+                def send_header(self, keyword, value):
+                    self.sent_headers[keyword] = value
+                def end_headers(self):
+                    pass
+                def send_error(self, code, message=None, explain=None):
+                    self.sent_status = code
+                    self.sent_body = (message or "").encode()
+                @property
+                def wfile(self):
+                    handler = self
+                    class WFile:
+                        def write(self, data):
+                            handler.sent_body = data
+                    return WFile()
+
+            # GET /api/status
+            h = DummyHandler()
+            h.path = "/api/status"
+            h.headers = {}
+            h.handle_get_status()
+            res = json.loads(h.sent_body.decode())
+            assert res["status"] == "ok"
+            assert res["has_db"] is True
+
+            # GET /api/weeks
+            h_weeks = DummyHandler()
+            h_weeks.path = "/api/weeks"
+            h_weeks.headers = {}
+            h_weeks.handle_get_weeks()
+            res_weeks = json.loads(h_weeks.sent_body.decode())
+            assert res_weeks["status"] == "ok"
+            assert len(res_weeks["weeks"]) > 0
+
+            # GET /api/report (demo & normal)
+            h_rep = DummyHandler()
+            h_rep.path = "/api/report?demo=1"
+            h_rep.headers = {}
+            h_rep.handle_get_report({"demo": ["1"]})
+            res_rep = json.loads(h_rep.sent_body.decode())
+            assert res_rep["status"] == "ok"
+            assert "<!doctype html>" in res_rep["html"]
+            assert "traffic_light" in res_rep
+
+            # GET /api/demo
+            h_demo = DummyHandler()
+            h_demo.handle_get_demo()
+            res_demo = json.loads(h_demo.sent_body.decode())
+            assert res_demo["status"] == "ok"
+            assert res_demo["is_demo"] is True
+
+            # POST /api/upload con cabecera SQLite válida
+            h_up = DummyHandler()
+            sqlite_bytes = b"SQLite format 3\x00" + b"\x00" * 200
+            h_up.handle_post_upload(sqlite_bytes, "application/octet-stream")
+            res_up = json.loads(h_up.sent_body.decode())
+            assert res_up["status"] == "ok"
+
+            # POST /api/upload con cabecera inválida
+            h_up_bad = DummyHandler()
+            h_up_bad.handle_post_upload(b"archivo corrupto", "application/octet-stream")
+            res_up_bad = json.loads(h_up_bad.sent_body.decode())
+            assert res_up_bad["status"] == "error"
+
+            # POST /api/auth con campos vacíos
+            h_auth = DummyHandler()
+            h_auth.handle_post_auth({})
+            res_auth = json.loads(h_auth.sent_body.decode())
+            assert res_auth["status"] == "error"
+
+            # POST /api/auth/mfa con session_id inválido
+            h_mfa = DummyHandler()
+            h_mfa.handle_post_auth_mfa({"session_id": "none", "code": "123456"})
+            res_mfa = json.loads(h_mfa.sent_body.decode())
+            assert res_mfa["status"] == "error"
+
+            # POST /api/sync
+            with patch("generate_report.sync"):
+                h_sync = DummyHandler()
+                h_sync.handle_post_sync({})
+                res_sync = json.loads(h_sync.sent_body.decode())
+                assert res_sync["status"] == "started"
 
 
 # ===========================================================================
