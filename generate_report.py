@@ -268,11 +268,14 @@ def sync(start: date | None = None, end: date | None = None):
     cmd = [binary, "extract"]
     if start:
         # Sin rango, `garmin extract` solo trae lo nuevo desde el último dato de la
-        # BD: pedir un informe antiguo daría un informe vacío. Su --end-date es
-        # exclusivo (salvo si coincide con --start-date), de ahí el +1 día.
+        # BD: pedir un informe antiguo daría un informe vacío.
         cmd += ["--start-date", start.isoformat()]
-        if end and end > start:
-            cmd += ["--end-date", (end + timedelta(days=1)).isoformat()]
+        if end:
+            # Garmin guarda la noche con la fecha del despertar, así que el sueño
+            # del último día del informe vive en `end + 1`. --end-date es exclusivo
+            # → +2 días. Nunca más allá de mañana: el futuro no tiene datos.
+            hasta = max(start, min(end + timedelta(days=2), date.today() + timedelta(days=1)))
+            cmd += ["--end-date", hasta.isoformat()]
 
     result = subprocess.run(
         cmd,

@@ -8,7 +8,7 @@ import re
 import sqlite3
 import tempfile
 import types
-from datetime import date
+from datetime import date, timedelta
 from pathlib import Path
 
 import generate_report
@@ -140,16 +140,19 @@ def test_sync_pasa_el_rango_a_extract():
     try:
         sync(date(2026, 4, 11), date(2026, 5, 5))
         sync(date(2026, 4, 11), date(2026, 4, 11))
+        sync(date.today() - timedelta(days=1), date.today())
         sync()
     finally:
         generate_report.subprocess.run, generate_report.VENV_BIN = orig_run, orig_bin
 
-    # --end-date de garmin extract es exclusivo → +1 día para incluir el 05-05
-    assert calls[0][1:] == ["extract", "--start-date", "2026-04-11", "--end-date", "2026-05-06"]
-    # Un solo día es el caso especial: extract lo incluye sin --end-date
-    assert calls[1][1:] == ["extract", "--start-date", "2026-04-11"]
+    # --end-date es exclusivo y el sueño del 05-05 se guarda como 05-06 → +2 días
+    assert calls[0][1:] == ["extract", "--start-date", "2026-04-11", "--end-date", "2026-05-07"]
+    # Un solo día también necesita el día siguiente para su noche
+    assert calls[1][1:] == ["extract", "--start-date", "2026-04-11", "--end-date", "2026-04-13"]
+    # El futuro no tiene datos: el tope es mañana
+    assert calls[2][-1] == (date.today() + timedelta(days=1)).isoformat()
     # Sin rango, sincronización incremental de siempre
-    assert calls[2][1:] == ["extract"]
+    assert calls[3][1:] == ["extract"]
 
 
 def test_demo_pipeline_end_to_end():
