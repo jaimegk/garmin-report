@@ -39,7 +39,7 @@ en `output/`. No necesita cuenta, ni credenciales, ni conexión.
 
 ## Qué lo hace distinto
 
-**Señales, no solo números.** El informe abre diciéndote qué mirar. Nueve reglas comparan la
+**Señales, no solo números.** El informe abre diciéndote qué mirar. Doce reglas comparan la
 semana con tu línea base y avisan de lo que se sale.
 
 **Tu línea base, no la de la población.** «49 bpm» no significa nada por sí solo; «49 bpm

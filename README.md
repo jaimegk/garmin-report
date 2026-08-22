@@ -44,7 +44,7 @@ No account, no credentials, no network.
 
 ## What makes it different
 
-**Signals, not just numbers.** The report opens by telling you what to look at. Nine rules
+**Signals, not just numbers.** The report opens by telling you what to look at. Twelve rules
 compare the week against your baseline and flag whatever stands out.
 
 **Your baseline, not the population's.** "49 bpm" means nothing on its own; "49 bpm when

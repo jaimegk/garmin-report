@@ -17,9 +17,65 @@ from generate_report import (
     SleepNight, bed_minutes, wake_minutes, sd_minutes, fmt_duration,
     fmt_trend, fmt_hms, iso_weeks_in_range, compute_flags,
     fmt_pace, fmt_zones, sync, build_report, summary_tiles, summary_rings,
-    recovery_score,
+    recovery_score, compute_sri, compute_social_jetlag, compute_hrv_stability,
+    compute_acwr_ewma, compute_aerobic_decoupling,
 )
 from render_html import md_to_html, svg_sleep_timeline, svg_week_wheel
+
+
+def test_compute_sri():
+    n1 = SleepNight("2026-06-02", "2026-06-01 23:00:00", "2026-06-02 07:00:00", 8*3600)
+    n2 = SleepNight("2026-06-03", "2026-06-02 23:00:00", "2026-06-03 07:00:00", 8*3600)
+    n3 = SleepNight("2026-06-04", "2026-06-03 23:00:00", "2026-06-04 07:00:00", 8*3600)
+    assert compute_sri([n1, n2, n3]) == 100
+
+    n_shifted = SleepNight("2026-06-03", "2026-06-03 01:00:00", "2026-06-03 09:00:00", 8*3600)
+    sri_shifted = compute_sri([n1, n_shifted])
+    assert 65 <= sri_shifted <= 88, f"SRI con desfase: {sri_shifted}"
+
+
+def test_compute_social_jetlag():
+    thu = SleepNight("2026-06-05", "2026-06-04 23:00:00", "2026-06-05 07:00:00", 8*3600)
+    fri = SleepNight("2026-06-06", "2026-06-06 01:00:00", "2026-06-06 09:00:00", 8*3600)
+    sat = SleepNight("2026-06-07", "2026-06-07 01:00:00", "2026-06-07 09:00:00", 8*3600)
+    assert compute_social_jetlag([thu, fri, sat]) == 120
+
+
+def test_compute_hrv_stability():
+    cur = [60, 62, 59, 61, 60, 61, 60]
+    base = [58, 60, 62, 59, 61] * 6
+    res = compute_hrv_stability(cur, base)
+    assert res["cv"] is not None and res["cv"] < 5.0
+    assert res["status"] == "balanced"
+    assert res["swc_low"] < 60.4 < res["swc_high"]
+
+    cur_low = [42, 44, 43, 45, 41, 42, 43]
+    res_low = compute_hrv_stability(cur_low, [60, 58, 62, 61, 59] * 5)
+    assert res_low["status"] == "low"
+
+
+def test_compute_acwr_ewma():
+    loads = [100.0] * 28
+    res = compute_acwr_ewma(loads)
+    assert res["acwr"] == 1.0
+    assert res["status"] == "optimal"
+
+    spike_loads = [100.0] * 21 + [250.0] * 7
+    res_spike = compute_acwr_ewma(spike_loads)
+    assert res_spike["acwr"] > 1.35
+    assert res_spike["status"] in ("overload", "danger")
+
+
+def test_compute_aerobic_decoupling():
+    laps = [
+        {"enhanced_avg_speed": 3.33, "avg_heart_rate": 140.0},
+        {"enhanced_avg_speed": 3.33, "avg_heart_rate": 140.0},
+        {"enhanced_avg_speed": 3.33, "avg_heart_rate": 150.0},
+        {"enhanced_avg_speed": 3.33, "avg_heart_rate": 150.0},
+    ]
+    ef, dec = compute_aerobic_decoupling(laps)
+    assert ef is not None
+    assert 6.0 <= dec <= 7.5
 
 
 def test_bed_minutes_wraps_after_midnight():
@@ -68,8 +124,8 @@ def _night(rhr=48, sleep_s=8 * 3600, spo2=95):
 def test_compute_flags():
     base = {"n_nights": 7, "rhr": 46, "hrv": 60, "stress": 30, "sleep_s": 8 * 3600,
             "score": 85, "steps": 9000, "spo2": 95, "intensity_week": 200,
-            "bed_sd": 25, "wake_sd": 20, "vo2max": 48}
-    cur = dict(base)
+            "bed_sd": 25, "wake_sd": 20, "vo2max": 48, "resp_avg": 13.5, "acwr": 1.0}
+    cur = dict(base, sri=85, social_jetlag=15, hrv_cv=5.0, hrv_swc_low=52.0, hrv_swc_high=68.0)
 
     # FC reposo ≥ media+5 tres días seguidos → aviso
     rows = [_night(rhr=52)] * 3 + [_night()] * 4
@@ -85,12 +141,34 @@ def test_compute_flags():
     flags = compute_flags([_night()] * 7, low, base)
     assert any("HRV nocturno" in f and f.startswith("⚠️") for f in flags), flags
 
+    # Frecuencia respiratoria nocturna desviada ≥ +1.0 resp/min → aviso
+    resp_drift = dict(cur, resp_avg=14.8)
+    flags = compute_flags([_night()] * 7, resp_drift, base)
+    assert any("Frecuencia respiratoria nocturna elevada" in f for f in flags), flags
+
+    # ACWR pico agudo > 1.50 → aviso
+    danger_acwr = dict(cur, acwr=1.58)
+    flags = compute_flags([_night()] * 7, danger_acwr, base)
+    assert any("Pico de carga agudo" in f for f in flags), flags
+
+    # Desacoplamiento aeróbico elevado y asimetría biomecánica en sesiones
+    acts = [
+        {"activity_type_key": "running", "duration": 3600, "decoupling": 8.5, "day": "2026-06-20",
+         "avg_ground_contact_balance": 52.0}
+    ]
+    flags = compute_flags([_night()] * 7, cur, base, act_detail=acts)
+    assert any("Desacoplamiento aeróbico" in f for f in flags), flags
+    assert any("Asimetría de apoyo" in f for f in flags), flags
+
 
 def test_fmt_pace_por_deporte():
     # 3.33 m/s ≈ 5:00/km corriendo; en bici se muestra km/h; en pádel, nada
     assert fmt_pace(1000 / 300, "running") == "5:00/km"
     assert fmt_pace(1000 / 300, "indoor_cycling") == "12.0 km/h"
     assert fmt_pace(100 / 130, "lap_swimming") == "2:10/100m"
+    # Variantes que Garmin inventa: no pueden caerse a '–' por no estar en una lista
+    assert fmt_pace(1000 / 300, "road_biking") == "12.0 km/h"
+    assert fmt_pace(1000 / 300, "trail_running") == "5:00/km"
     assert fmt_pace(1000 / 300, "paddelball") == "–"
     assert fmt_pace(None, "running") == "–"
 
@@ -223,21 +301,26 @@ def test_title_range_no_repite_lo_que_no_cambia():
 def test_summary_tiles_conocen_la_direccion_buena():
     # Subir es malo en FC en reposo y bueno en VO2máx: el color no puede salir
     # del signo de la tendencia.
-    cur = {"rhr": 52, "vo2max": 49, "sleep_s": 7 * 3600, "bed_sd": 30, "score": 80,
-           "hrv": 60, "stress": 30, "steps": 9000, "intensity_week": 200, "n_nights": 7}
+    cur = {"rhr": 52, "vo2max": 49, "sleep_s": 7 * 3600, "score": 80,
+           "hrv": 60, "stress": 30, "steps": 9000, "intensity_week": 200, "n_nights": 7,
+           "acwr": 1.15, "sri": 85, "hrv_cv": 4.5}
     base = dict(cur, rhr=46, vo2max=47, n_nights=7)
     state = {label: st for label, _v, _t, st in summary_tiles(cur, base)}
     assert state["FC reposo"] == "bad"
     assert state["VO2máx"] == "good"
+    assert state["Carga (ACWR)"] == "good"
+    assert state["Regularidad (SRI)"] == "good"
+    assert state["Estabilidad HRV"] == "good"
     assert state["Estrés medio"] == ""             # sin cambio, no se moja
     # Sueño y minutos de intensidad son el valor de un anillo: no se repiten
     # como tarjeta.
     assert "Sueño" not in state and "Min. intensidad/sem" not in state
     assert "Score sueño" in state
 
-    # Sin histórico con el que comparar, ninguna tarjeta se moja.
+    # Sin histórico con el que comparar, las de comparación directa no se mojan
     sin_base = dict(base, n_nights=0)
-    assert all(st == "" and tr == "" for _l, _v, tr, st in summary_tiles(cur, sin_base))
+    assert all(st == "" or label in ("Carga (ACWR)", "Regularidad (SRI)", "Estabilidad HRV")
+               for label, _v, tr, st in summary_tiles(cur, sin_base))
 
 
 def test_recovery_score_pondera_hrv_y_fc():
