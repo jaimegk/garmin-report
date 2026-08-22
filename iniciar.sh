@@ -10,7 +10,7 @@ set -e
 cd "$(dirname "$0")"
 
 echo "============================================================"
-echo "  🚀 Iniciando BioDelta..."
+echo "  [BioDelta] Iniciando servidor..."
 echo "============================================================"
 
 # Comprobar si existe python3
@@ -23,14 +23,14 @@ fi
 
 # Crear entorno virtual si no existe
 if [ ! -d ".venv" ]; then
-    echo "⚙️ Configurando el entorno local por primera vez..."
+    echo "[BioDelta] Configurando el entorno local por primera vez..."
     python3 -m venv .venv
-    echo "📦 Instalando dependencias de BioDelta..."
+    echo "[BioDelta] Instalando dependencias de BioDelta..."
     .venv/bin/pip install --upgrade pip
     .venv/bin/pip install -r requirements.txt
-    echo "✅ Entorno configurado correctamente."
+    echo "[BioDelta] Entorno configurado correctamente."
 fi
 
 # Arrancar el servidor local
-echo "🌐 Abriendo BioDelta en tu navegador (http://localhost:8000)..."
+echo "[BioDelta] Abriendo BioDelta en tu navegador (http://localhost:8000)..."
 .venv/bin/python app.py

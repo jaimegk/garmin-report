@@ -26,14 +26,15 @@
       lbl_demo: 'Demo',
       lbl_glossary: 'Glossary',
       lbl_settings: 'Settings',
-      theme_light: '☀ Light',
-      theme_dark: '☾ Dark',
+      lbl_print: 'Print',
+      theme_light: '☀',
+      theme_dark: '☾',
 
       loading_report: 'Generating health report...',
       loading_demo: 'Generating demo environment...',
       loading_generic: 'Loading health metrics...',
 
-      onboarding_badge: '👋 Welcome to BioDelta!',
+      onboarding_badge: 'Welcome to BioDelta!',
       onboarding_title: 'Your Garmin health metrics, clear and private',
       onboarding_subtitle: '100% local on your device, no external servers. Choose how to start:',
       card_garmin_title: 'Connect with Garmin',
@@ -46,7 +47,7 @@
       card_demo_desc: 'Explore a full report with synthetic demo data without needing a watch.',
       card_demo_btn: 'View Demo',
 
-      sync_modal_title: '🔄 Sync with Garmin Connect',
+      sync_modal_title: 'Sync with Garmin Connect',
       sync_tab_sync: 'Synchronization',
       sync_tab_login: 'Account / Login',
       sync_checking_session: 'Checking Garmin session...',
@@ -59,7 +60,7 @@
       sync_connecting: 'Connecting with Garmin Connect...',
       login_email_label: 'Garmin Connect Email:',
       login_pass_label: 'Password:',
-      privacy_note: '🔒 Your credentials are used exclusively to obtain the Garmin session locally and are never sent to third parties.',
+      privacy_note: 'Your credentials are used exclusively to obtain the Garmin session locally and are never sent to third parties.',
       btn_submit_login: 'Connect and Authenticate',
       btn_logging_in: 'Connecting to Garmin...',
       mfa_title: 'Two-Step Verification (2FA)',
@@ -67,15 +68,15 @@
       btn_submit_mfa: 'Verify',
       btn_verifying_mfa: 'Verifying...',
 
-      upload_modal_title: '📁 Load Database',
+      upload_modal_title: 'Load Database',
       upload_drop_title: 'Drag your garmin_data.db file here',
       upload_drop_subtitle: 'or click to browse your computer',
       upload_browse_btn: 'Select file',
       uploading_validating: 'Uploading and validating',
       upload_success: 'Database loaded successfully',
 
-      glossary_modal_title: '📖 Health & Metric Glossary',
-      glossary_search_ph: '🔍 Search metric or concept (e.g. SRI, HRV, ACWR)...',
+      glossary_modal_title: 'Health & Metric Glossary',
+      glossary_search_ph: 'Search metric or concept (e.g. SRI, HRV, ACWR)...',
       cat_all: 'All',
       cat_sleep: 'Sleep',
       cat_cardio: 'Cardiovascular',
@@ -85,7 +86,7 @@
       glossary_why: 'Why it matters:',
       glossary_range: 'Reference range:',
 
-      settings_modal_title: '⚙️ Target Settings',
+      settings_modal_title: 'Target Settings',
       settings_sleep_label: 'Sleep goal per night:',
       settings_steps_label: 'Daily steps goal:',
       settings_intensity_label: 'Weekly intensity minutes goal (WHO):',
@@ -93,10 +94,10 @@
       settings_saved_toast: 'Target settings saved successfully',
 
       toast_sync_running: 'A synchronization is already in progress',
-      toast_sync_success: '🎉 Synchronization completed successfully!',
+      toast_sync_success: 'Synchronization completed successfully!',
       toast_sync_error: 'Error during synchronization',
       toast_mfa_prompt: 'Garmin requested a 2FA security code',
-      toast_mfa_success: '🎉 2FA verified successfully!',
+      toast_mfa_success: '2FA verified successfully!',
       toast_mfa_invalid: 'Invalid 2FA code',
       toast_server_error: 'Error connecting to local BioDelta server',
     },
@@ -114,14 +115,15 @@
       lbl_demo: 'Demo',
       lbl_glossary: 'Glosario',
       lbl_settings: 'Ajustes',
-      theme_light: '☀ Claro',
-      theme_dark: '☾ Oscuro',
+      lbl_print: 'Imprimir',
+      theme_light: '☀',
+      theme_dark: '☾',
 
       loading_report: 'Generando informe de salud...',
       loading_demo: 'Generando entorno de demostración...',
       loading_generic: 'Cargando métricas de salud...',
 
-      onboarding_badge: '👋 ¡Bienvenido a BioDelta!',
+      onboarding_badge: '¡Bienvenido a BioDelta!',
       onboarding_title: 'Tus métricas de salud de Garmin, claras y privadas',
       onboarding_subtitle: '100% local en tu dispositivo, sin servidores externos. Elige cómo empezar:',
       card_garmin_title: 'Conectar con Garmin',
@@ -134,7 +136,7 @@
       card_demo_desc: 'Explora un informe completo con datos sintéticos de prueba sin necesidad de reloj.',
       card_demo_btn: 'Ver Demo',
 
-      sync_modal_title: '🔄 Sincronizar con Garmin Connect',
+      sync_modal_title: 'Sincronizar con Garmin Connect',
       sync_tab_sync: 'Sincronización',
       sync_tab_login: 'Cuenta / Login',
       sync_checking_session: 'Comprobando sesión de Garmin...',
@@ -147,7 +149,7 @@
       sync_connecting: 'Conectando con Garmin Connect...',
       login_email_label: 'Email de Garmin Connect:',
       login_pass_label: 'Contraseña:',
-      privacy_note: '🔒 Tus credenciales se utilizan exclusivamente para obtener la sesión de Garmin localmente y nunca se envían a terceros.',
+      privacy_note: 'Tus credenciales se utilizan exclusivamente para obtener la sesión de Garmin localmente y nunca se envían a terceros.',
       btn_submit_login: 'Conectar y Autenticar',
       btn_logging_in: 'Conectando con Garmin...',
       mfa_title: 'Verificación en Dos Pasos (2FA)',
@@ -155,15 +157,15 @@
       btn_submit_mfa: 'Verificar',
       btn_verifying_mfa: 'Verificando...',
 
-      upload_modal_title: '📁 Cargar Base de Datos',
+      upload_modal_title: 'Cargar Base de Datos',
       upload_drop_title: 'Arrastra aquí tu archivo garmin_data.db',
       upload_drop_subtitle: 'o haz clic para buscarlo en tu ordenador',
       upload_browse_btn: 'Seleccionar archivo',
       uploading_validating: 'Subiendo y validando',
       upload_success: 'Base de datos cargada correctamente',
 
-      glossary_modal_title: '📖 Glosario de Métricas y Salud',
-      glossary_search_ph: '🔍 Buscar métrica o concepto (ej. SRI, HRV, ACWR)...',
+      glossary_modal_title: 'Glosario de Métricas y Salud',
+      glossary_search_ph: 'Buscar métrica o concepto (ej. SRI, HRV, ACWR)...',
       cat_all: 'Todos',
       cat_sleep: 'Sueño',
       cat_cardio: 'Cardiovascular',
@@ -173,7 +175,7 @@
       glossary_why: '¿Por qué importa?',
       glossary_range: 'Rango orientativo:',
 
-      settings_modal_title: '⚙️ Ajustes y Objetivos',
+      settings_modal_title: 'Ajustes y Objetivos',
       settings_sleep_label: 'Objetivo de sueño por noche:',
       settings_steps_label: 'Objetivo de pasos diarios:',
       settings_intensity_label: 'Objetivo semanal de intensidad (OMS):',
@@ -181,10 +183,10 @@
       settings_saved_toast: 'Ajustes guardados con éxito',
 
       toast_sync_running: 'Ya hay una sincronización en curso',
-      toast_sync_success: '🎉 ¡Sincronización completada con éxito!',
+      toast_sync_success: '¡Sincronización completada con éxito!',
       toast_sync_error: 'Error en la sincronización',
       toast_mfa_prompt: 'Garmin ha solicitado código 2FA',
-      toast_mfa_success: '🎉 ¡2FA verificado con éxito!',
+      toast_mfa_success: '¡2FA verificado con éxito!',
       toast_mfa_invalid: 'Código 2FA incorrecto',
       toast_server_error: 'Error conectando con el servidor BioDelta local',
     }
@@ -316,7 +318,7 @@
 
     // Actualizar botón de bandera
     if (dom.btnLang) {
-      dom.btnLang.textContent = lang === 'es' ? '🇪🇸 ES' : '🇬🇧 EN';
+      dom.btnLang.textContent = lang === 'es' ? '🇪🇸' : '🇬🇧';
       dom.btnLang.title = t.btn_lang_title;
       dom.btnLang.setAttribute('aria-label', t.btn_lang_title);
     }
@@ -646,7 +648,7 @@
           clearInterval(timer);
           dom.btnStartSync.disabled = false;
           dom.syncProgress.style.display = 'none';
-          showToast(`❌ ${data.message || t.toast_sync_error}`, 'error');
+          showToast(data.message || t.toast_sync_error, 'error');
         }
       } catch (e) {
         clearInterval(timer);
@@ -686,11 +688,11 @@
         dom.mfaCode.focus();
         showToast(t.toast_mfa_prompt, 'info');
       } else if (data.status === 'ok') {
-        showToast('✅ ' + data.message, 'success');
+        showToast(data.message, 'success');
         updateAuthStatusUI(true);
         switchTab('sync-tab-auto');
       } else {
-        showToast('❌ ' + (data.message || 'Authentication error'), 'error');
+        showToast(data.message || 'Authentication error', 'error');
       }
     } catch (err) {
       btn.disabled = false;
@@ -729,7 +731,7 @@
         updateAuthStatusUI(true);
         switchTab('sync-tab-auto');
       } else {
-        showToast(`❌ ${data.message || t.toast_mfa_invalid}`, 'error');
+        showToast(data.message || t.toast_mfa_invalid, 'error');
       }
     } catch (e) {
       dom.btnSubmitMfa.disabled = false;
@@ -761,7 +763,7 @@
 
       if (data.status === 'ok') {
         dom.uploadStatus.className = 'upload-status-box success';
-        dom.uploadStatus.textContent = '✅ ' + data.message;
+        dom.uploadStatus.textContent = data.message;
         setTimeout(async () => {
           closeModal('modal-upload');
           showToast(t.upload_success, 'success');
@@ -770,7 +772,7 @@
         }, 800);
       } else {
         dom.uploadStatus.className = 'upload-status-box error';
-        dom.uploadStatus.textContent = '❌ ' + (data.message || 'Invalid file');
+        dom.uploadStatus.textContent = data.message || 'Invalid file';
       }
     } catch (e) {
       dom.uploadStatus.className = 'upload-status-box error';

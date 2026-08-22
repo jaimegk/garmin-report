@@ -1018,7 +1018,6 @@ def status_card_html(tl: dict | None, lang: str = "en") -> str:
         f'<div><strong>{lbl_rec}</strong> {_esc(recovery_diag)}</div>'
         f'</div>'
         f'<div class="status-item highlight">'
-        f'<span class="status-icon" aria-hidden="true">🎯</span>'
         f'<div><strong>{lbl_rec_tag}</strong> {_esc(recommendation)}</div>'
         f'</div>'
         f'</div>'
@@ -1047,9 +1046,9 @@ def glossary_modal_html(lang: str = "en") -> str:
             f'</article>'
         )
 
-    title_modal = _esc("📖 Glosario de Métricas y Salud" if is_es else "📖 Health & Metric Glossary")
+    title_modal = _esc("Glosario de Métricas y Salud" if is_es else "Health & Metric Glossary")
     close_lbl = "Cerrar glosario" if is_es else "Close glossary"
-    search_ph = "🔍 Buscar métrica o concepto..." if is_es else "🔍 Search metric or concept (e.g. SRI, HRV, ACWR)..."
+    search_ph = "Buscar métrica o concepto..." if is_es else "Search metric or concept (e.g. SRI, HRV, ACWR)..."
     cat_all = "Todos" if is_es else "All"
     cat_sleep = "Sueño" if is_es else "Sleep"
     cat_cardio = "Cardiovascular"
@@ -1161,13 +1160,33 @@ def tiles_html(tiles) -> str:
 
 _ALIGN = {(True, True): "center", (False, True): "right"}
 
-# Las señales del informe ya vienen marcadas con un emoji: sirve de icono y de
-# clave para colorear la fila. Se conserva en el texto, así que el estado sigue
-# siendo legible sin distinguir colores.
+_WARN_PATTERNS = (
+    "FC reposo elevada", "Resting HR elevated",
+    "HRV nocturno un", "Overnight HRV is",
+    "Inestabilidad autonómica", "Autonomic instability",
+    "noches por debajo de 6 h", "nights with under 6 h",
+    "Regularidad de sueño baja", "Low sleep regularity",
+    "Horario de sueño irregular", "Irregular sleep schedule",
+    "Estrés medio elevado", "High average daily stress",
+    "Pico de carga agudo", "Acute training load spike",
+    "Actividad por debajo de la recomendación", "Physical activity below recommendation",
+    "SpO2 nocturna media por debajo de 92%", "Average overnight SpO2 below 92%",
+    "Frecuencia respiratoria nocturna elevada", "Elevated overnight respiration",
+    "Desacoplamiento aeróbico elevado", "High aerobic decoupling",
+    "Asimetría de apoyo en carrera", "Running ground contact asymmetry",
+    "Alerta", "Warning", "warn",
+)
+
+_GOOD_PATTERNS = (
+    "Buena semana de sueño", "Great week of sleep",
+    "rango óptimo", "optimal range",
+    "rango saludable", "healthy range",
+    "por encima de tu media", "above baseline",
+    "good",
+)
+
 _SIGNALS = {"⚠️": "warn", "✅": "good", "ℹ️": "info"}
 
-# El reparto por zonas de FC viene como "14/39/34/10/2" (porcentajes, z1→z5).
-# Cinco números seguidos no se leen; cinco colores de calma a máximo, sí.
 _ZONES = re.compile(r"(\d{1,3})/(\d{1,3})/(\d{1,3})/(\d{1,3})/(\d{1,3})")
 
 
@@ -1175,7 +1194,12 @@ def _signal_class(text: str) -> str:
     for mark, cls in _SIGNALS.items():
         if text.startswith(mark):
             return cls
-    return ""
+    t_lower = text.strip().lower()
+    if any(p.lower() in t_lower for p in _WARN_PATTERNS):
+        return "warn"
+    if any(p.lower() in t_lower for p in _GOOD_PATTERNS):
+        return "good"
+    return "info"
 
 
 def _slug(text: str) -> str:
@@ -1944,9 +1968,7 @@ THEME_JS = """
   function paint(t) {
     root.dataset.theme = t;
     if (btn) {
-      btn.textContent = t === 'dark'
-        ? (isEs ? '☀ Claro' : '☀ Light')
-        : (isEs ? '☾ Oscuro' : '☾ Dark');
+      btn.textContent = t === 'dark' ? '☀' : '☾';
       btn.setAttribute('aria-pressed', t === 'dark');
     }
   }
@@ -2094,9 +2116,9 @@ def _navbar(title: str, body: str, lang: str = "en") -> str:
         for sid, name in re.findall(
             r'<section class="sec" id="([^"]+)">.*?<h2>(.*?)</h2>', body)
     )
-    glossary_lbl = "📖 Glosario" if is_es else "📖 Glossary"
-    print_lbl = "🖨️ Imprimir" if is_es else "🖨️ Print"
-    theme_lbl = "☾ Oscuro" if is_es else "☾ Dark"
+    glossary_lbl = "Glosario" if is_es else "Glossary"
+    print_lbl = "Imprimir" if is_es else "Print"
+    theme_lbl = "☾"
 
     return (
         '<nav class="topbar"><div class="topbar-in">'
@@ -2104,7 +2126,7 @@ def _navbar(title: str, body: str, lang: str = "en") -> str:
         f'<div class="navlinks">{links}</div>'
         f'<button id="glossary-btn" class="nav-btn" type="button" aria-label="{glossary_lbl}">{glossary_lbl}</button>'
         f'<button id="print-btn" class="nav-btn" type="button" onclick="window.print()" aria-label="{print_lbl}">{print_lbl}</button>'
-        f'<button id="theme-btn" class="theme-btn" type="button" aria-pressed="false">{theme_lbl}</button>'
+        f'<button id="theme-btn" class="theme-btn" type="button" aria-label="Toggle theme" aria-pressed="false">{theme_lbl}</button>'
         '</div></nav>'
     )
 

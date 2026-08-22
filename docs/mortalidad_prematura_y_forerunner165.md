@@ -214,21 +214,21 @@ A partir de ese hardware, el reloj y Garmin Connect derivan:
 
 | # | Factor | Solidez de la evidencia | Tamaño de efecto (referencia) | ¿Mide el FR165? | Métrica concreta / matiz |
 |--:|--------|:----------------------:|-------------------------------|:---------------:|--------------------------|
-| 1 | **Capacidad cardiorrespiratoria (VO₂máx)** | ★★★★★ | HR ≈ 0,47 alto vs bajo; +1 MET → −11–17 % | ✅ **Sí** (estimado) | VO₂máx (necesita salidas con GPS para calibrar) |
-| 2 | **Actividad física / pasos** | ★★★★★ | Meseta 6–8 k pasos; 150–300 min MVPA → −20 % | ✅ **Sí** | Pasos, minutos de intensidad, actividades |
-| 3 | **FC en reposo** | ★★★★ | +10 lpm → +9 % (RR 1,09) | ✅ **Sí** | FC reposo diaria |
-| 4 | **Variabilidad FC (HRV)** | ★★★★ | HRV baja → HR ≈ 2,12 | ✅ **Sí** | HRV nocturna (RMSSD aprox.) |
-| 5 | **Sueño (duración/calidad)** | ★★★★ | U: <7 h HR 1,12; ≥9 h HR 1,34 | ✅ **Sí** | Horas, fases, _score_ |
-| 6 | **SpO₂ / oxigenación** | ★★ (cribado) | Marcador de apnea / respiratorio | ✅ **Sí** | Pulse Ox puntual o nocturno |
-| 7 | **Frecuencia respiratoria** | ★★ | Signo vital (más agudo que crónico) | ✅ **Sí** | Respiraciones/min día y noche |
-| 8 | **Velocidad de la marcha** | ★★★★ | +0,1 m/s → −12 % (HR 0,88) | 🟡 **Parcial** | Derivable del ritmo GPS al caminar (no es un test estandarizado) |
-| 9 | **Fuerza de prensión / muscular** | ★★★★ | −5 kg → +16 % (HR 1,16) | ❌ **No** | Necesita dinamómetro |
-| 10 | **Presión arterial** | ★★★★★ | +20 mmHg → ×1,2 total, ×2 CV | ❌ **No** | Necesita tensiómetro |
-| 11 | **Composición corporal (cintura)** | ★★★★ | +10 cm cintura → +11 % (HR 1,11) | ❌ **No** | Cinta métrica; peso/IMC solo manual o báscula |
-| 12 | **Tabaquismo** | ★★★★★ | −12–13 años de vida; HR ≈ 2,7 | ❌ **No** | Conducta (autorregistro) |
-| 13 | **Aislamiento social / soledad** | ★★★★ | OR ≈ 1,26–1,32 | ❌ **No** | Psicosocial |
-| 14 | **Metabólico-bioquímico (glucosa, lípidos)** | ★★★★★ | Factores de riesgo de primer orden | ❌ **No** | Analítica de sangre |
-| — | _Dieta y alcohol_ | ★★★★ | Riesgo de primer orden | ❌ **No** | Conducta |
+| 1 | **Capacidad cardiorrespiratoria (VO₂máx)** | ★★★★★ | HR ≈ 0,47 alto vs bajo; +1 MET → −11–17 % | **Sí** (estimado) | VO₂máx (necesita salidas con GPS para calibrar) |
+| 2 | **Actividad física / pasos** | ★★★★★ | Meseta 6–8 k pasos; 150–300 min MVPA → −20 % | **Sí** | Pasos, minutos de intensidad, actividades |
+| 3 | **FC en reposo** | ★★★★ | +10 lpm → +9 % (RR 1,09) | **Sí** | FC reposo diaria |
+| 4 | **Variabilidad FC (HRV)** | ★★★★ | HRV baja → HR ≈ 2,12 | **Sí** | HRV nocturna (RMSSD aprox.) |
+| 5 | **Sueño (duración/calidad)** | ★★★★ | U: <7 h HR 1,12; ≥9 h HR 1,34 | **Sí** | Horas, fases, _score_ |
+| 6 | **SpO₂ / oxigenación** | ★★ (cribado) | Marcador de apnea / respiratorio | **Sí** | Pulse Ox puntual o nocturno |
+| 7 | **Frecuencia respiratoria** | ★★ | Signo vital (más agudo que crónico) | **Sí** | Respiraciones/min día y noche |
+| 8 | **Velocidad de la marcha** | ★★★★ | +0,1 m/s → −12 % (HR 0,88) | **Parcial** | Derivable del ritmo GPS al caminar (no es un test estandarizado) |
+| 9 | **Fuerza de prensión / muscular** | ★★★★ | −5 kg → +16 % (HR 1,16) | **No** | Necesita dinamómetro |
+| 10 | **Presión arterial** | ★★★★★ | +20 mmHg → ×1,2 total, ×2 CV | **No** | Necesita tensiómetro |
+| 11 | **Composición corporal (cintura)** | ★★★★ | +10 cm cintura → +11 % (HR 1,11) | **No** | Cinta métrica; peso/IMC solo manual o báscula |
+| 12 | **Tabaquismo** | ★★★★★ | −12–13 años de vida; HR ≈ 2,7 | **No** | Conducta (autorregistro) |
+| 13 | **Aislamiento social / soledad** | ★★★★ | OR ≈ 1,26–1,32 | **No** | Psicosocial |
+| 14 | **Metabólico-bioquímico (glucosa, lípidos)** | ★★★★★ | Factores de riesgo de primer orden | **No** | Analítica de sangre |
+| — | _Dieta y alcohol_ | ★★★★ | Riesgo de primer orden | **No** | Conducta |
 
 ★ = solidez/replicación de la evidencia para mortalidad por cualquier causa (valoración cualitativa).
 
@@ -238,11 +238,11 @@ A partir de ese hardware, el reloj y Garmin Connect derivan:
 
 Tomando los **14 factores** de mayor respaldo de la tabla anterior:
 
-- ✅ **Mide directamente: 7** → VO₂máx, actividad/pasos, FC en reposo, HRV, sueño, SpO₂ y
+- **Mide directamente: 7** → VO₂máx, actividad/pasos, FC en reposo, HRV, sueño, SpO₂ y
   frecuencia respiratoria.
-- 🟡 **Mide parcialmente: 1** → velocidad de la marcha (se puede derivar del ritmo con GPS,
+- **Mide parcialmente: 1** → velocidad de la marcha (se puede derivar del ritmo con GPS,
   pero no como test clínico estandarizado).
-- ❌ **No mide: 6** → fuerza de prensión, presión arterial, composición corporal (cintura),
+- **No mide: 6** → fuerza de prensión, presión arterial, composición corporal (cintura),
   tabaquismo, aislamiento social y analítica de sangre (glucosa/lípidos). _(Sumando dieta y
   alcohol, 8 factores conductuales/clínicos fuera de alcance.)_
 

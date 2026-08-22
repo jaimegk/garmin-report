@@ -31,7 +31,7 @@ Everything runs 100% locally. Your credentials and your health data never leave 
 **[▶ See a full interactive example report](https://jaimegk.github.io/biodelta/)** ·
 [Markdown version](docs/ejemplo_garmin_log.md)
 
-## 🚀 1-Click Quickstart
+## 1-Click Quickstart
 
 You can use BioDelta without touching the terminal or configuring environments:
 
@@ -52,7 +52,7 @@ cd biodelta
 ./iniciar.sh
 ```
 
-When the app opens, click **✨ Demo** to explore a full six-week report built from synthetic
+When the app opens, click **Demo** to explore a full six-week report built from synthetic
 data, with every signal active. No account, no credentials, no network.
 
 ## What makes it different
@@ -65,7 +65,7 @@ language: sleep duration and regularity, autonomic recovery and stress, and what
 `garmin_data.db` file, or sync straight from Garmin Connect with **two-factor authentication
 (2FA/MFA)** support. The server binds to `127.0.0.1` and only accepts requests from itself.
 
-**Interactive metric glossary.** A `📖 Glossary` button with a clear, evidence-based
+**Interactive metric glossary.** A `Glossary` button with a clear, evidence-based
 definition of every metric (SRI, ACWR, RMSSD, aerobic decoupling, VO2max…).
 
 **Synchronized charts.** Hover over any day to read its exact values and highlight that same
@@ -174,7 +174,7 @@ theme, and hovering a bar or a point shows its exact value.
 Sleep is attributed to the day you went to bed (not the day you woke up), and invalid
 stress/Body Battery readings (`value < 0`) are discarded.
 
-> **On VO2max:** the Forerunner 165 only estimates it from **outdoor runs or walks with GPS**
+> **On VO2max:** Garmin watches only estimate it from **outdoor runs or walks with GPS**
 > (or cycling with a power meter). Indoor, treadmill and swimming sessions produce no estimate.
 
 ## Tests

@@ -1086,6 +1086,40 @@ def iso_weeks_in_range(start: date, end: date) -> list:
     return [(key[1], ws, we) for key, (ws, we) in sorted(spans.items(), key=lambda kv: kv[1][0])]
 
 
+_WARN_PATTERNS = (
+    "FC reposo elevada", "Resting HR elevated",
+    "HRV nocturno un", "Overnight HRV is",
+    "Inestabilidad autonómica", "Autonomic instability",
+    "noches por debajo de 6 h", "nights with under 6 h",
+    "Regularidad de sueño baja", "Low sleep regularity",
+    "Horario de sueño irregular", "Irregular sleep schedule",
+    "Estrés medio elevado", "High average daily stress",
+    "Pico de carga agudo", "Acute training load spike",
+    "Actividad por debajo de la recomendación", "Physical activity below recommendation",
+    "SpO2 nocturna media por debajo de 92%", "Average overnight SpO2 below 92%",
+    "Frecuencia respiratoria nocturna elevada", "Elevated overnight respiration",
+    "Desacoplamiento aeróbico elevado", "High aerobic decoupling",
+    "Asimetría de apoyo en carrera", "Running ground contact asymmetry",
+)
+
+_GOOD_PATTERNS = (
+    "Buena semana de sueño", "Great week of sleep",
+    "rango óptimo", "optimal range",
+    "rango saludable", "healthy range",
+    "por encima de tu media", "above baseline",
+)
+
+
+def is_warn_signal(text: str) -> bool:
+    t_lower = text.lower()
+    return any(p.lower() in t_lower for p in _WARN_PATTERNS) or text.startswith("⚠️")
+
+
+def is_good_signal(text: str) -> bool:
+    t_lower = text.lower()
+    return any(p.lower() in t_lower for p in _GOOD_PATTERNS) or text.startswith("✅")
+
+
 def compute_flags(sleep_rows: list, cur_stats: dict, base_stats: dict, act_detail: list | None = None, lang: str = "en") -> list[str]:
     """Reglas simples sobre los datos para resaltar lo que merece atención.
 
@@ -1108,12 +1142,12 @@ def compute_flags(sleep_rows: list, cur_stats: dict, base_stats: dict, act_detai
         if best >= 3:
             if is_es:
                 flags.append(
-                    f"⚠️ FC reposo elevada {best} días seguidos respecto a tu media "
+                    f"FC reposo elevada {best} días seguidos respecto a tu media "
                     f"({round(base_stats['rhr'])} bpm) — posible fatiga, estrés o estar incubando algo."
                 )
             else:
                 flags.append(
-                    f"⚠️ Resting HR elevated for {best} consecutive days compared to your baseline "
+                    f"Resting HR elevated for {best} consecutive days compared to your baseline "
                     f"({round(base_stats['rhr'])} bpm) — possible fatigue, stress, or brewing illness."
                 )
 
@@ -1124,33 +1158,33 @@ def compute_flags(sleep_rows: list, cur_stats: dict, base_stats: dict, act_detai
             if is_es:
                 swc_str = f" (fuera de tu banda normal {round(cur_stats['hrv_swc_low'])}–{round(cur_stats['hrv_swc_high'])} ms)" if cur_stats.get("hrv_swc_low") else ""
                 flags.append(
-                    f"⚠️ HRV nocturno un {round((1 - ratio) * 100)}% por debajo de tu media{swc_str} "
+                    f"HRV nocturno un {round((1 - ratio) * 100)}% por debajo de tu media{swc_str} "
                     "— señal de carga/estrés; prioriza descanso."
                 )
             else:
                 swc_str = f" (outside your normal range {round(cur_stats['hrv_swc_low'])}–{round(cur_stats['hrv_swc_high'])} ms)" if cur_stats.get("hrv_swc_low") else ""
                 flags.append(
-                    f"⚠️ Overnight HRV is {round((1 - ratio) * 100)}% below your baseline{swc_str} "
+                    f"Overnight HRV is {round((1 - ratio) * 100)}% below your baseline{swc_str} "
                     "— signal of autonomic load/stress; prioritize recovery."
                 )
         elif ratio >= 1.10:
-            flags.append("✅ HRV nocturno por encima de tu media — buena recuperación." if is_es
-                         else "✅ Overnight HRV above baseline — good recovery.")
+            flags.append("HRV nocturno por encima de tu media — buena recuperación." if is_es
+                         else "Overnight HRV above baseline — good recovery.")
 
     # 3. Estabilidad de HRV (CV elevado -> inestabilidad autonómica)
     hrv_cv = cur_stats.get("hrv_cv")
     if hrv_cv is not None and hrv_cv > 10.5:
         flags.append(
-            f"⚠️ Inestabilidad autonómica (CV de HRV {hrv_cv:.1f}%) — oscilaciones nocturnas elevadas asociadas a fatiga acumulada."
+            f"Inestabilidad autonómica (CV de HRV {hrv_cv:.1f}%) — oscilaciones nocturnas elevadas asociadas a fatiga acumulada."
             if is_es else
-            f"⚠️ Autonomic instability (HRV CV {hrv_cv:.1f}%) — high overnight fluctuations associated with accumulated fatigue."
+            f"Autonomic instability (HRV CV {hrv_cv:.1f}%) — high overnight fluctuations associated with accumulated fatigue."
         )
 
     # 4. Noches cortas
     short = sum(1 for r in sleep_rows if r.sleep_s and r.sleep_s < 6 * 3600)
     if short >= 2:
-        flags.append(f"⚠️ {short} noches por debajo de 6 h de sueño." if is_es
-                     else f"⚠️ {short} nights with under 6 h of sleep.")
+        flags.append(f"{short} noches por debajo de 6 h de sueño." if is_es
+                     else f"{short} nights with under 6 h of sleep.")
 
     # 5. Regularidad del sueño (SRI y dispersión de horarios)
     sri = cur_stats.get("sri")
@@ -1160,29 +1194,29 @@ def compute_flags(sleep_rows: list, cur_stats: dict, base_stats: dict, act_detai
         if is_es:
             sjl_str = f", jetlag social {sjl} min" if sjl else ""
             flags.append(
-                f"⚠️ Regularidad de sueño baja (SRI {sri}/100{sjl_str}): horarios variables que desincronizan el "
+                f"Regularidad de sueño baja (SRI {sri}/100{sjl_str}): horarios variables que desincronizan el "
                 "ritmo circadiano — la regularidad influye en la longevidad tanto como la duración."
             )
         else:
             sjl_str = f", social jetlag {sjl} min" if sjl else ""
             flags.append(
-                f"⚠️ Low sleep regularity (SRI {sri}/100{sjl_str}): irregular bed/wake times disrupt circadian rhythm "
+                f"Low sleep regularity (SRI {sri}/100{sjl_str}): irregular bed/wake times disrupt circadian rhythm "
                 "— consistency influences longevity as much as duration."
             )
     elif bed_sd is not None and bed_sd > 60:
         flags.append(
-            f"⚠️ Horario de sueño irregular: la hora de acostarte varía ±{round(bed_sd)} min esta semana — la regularidad pesa tanto como la duración."
+            f"Horario de sueño irregular: la hora de acostarte varía ±{round(bed_sd)} min esta semana — la regularidad pesa tanto como la duración."
             if is_es else
-            f"⚠️ Irregular sleep schedule: bedtime varies by ±{round(bed_sd)} min this week — consistency matters as much as duration."
+            f"Irregular sleep schedule: bedtime varies by ±{round(bed_sd)} min this week — consistency matters as much as duration."
         )
 
     # 6. Estrés medio elevado respecto a la media (+8)
     if have_base and base_stats.get("stress") and cur_stats.get("stress"):
         if cur_stats["stress"] >= base_stats["stress"] + 8:
             flags.append(
-                f"⚠️ Estrés medio elevado ({round(cur_stats['stress'])}) frente a tu media ({round(base_stats['stress'])})."
+                f"Estrés medio elevado ({round(cur_stats['stress'])}) frente a tu media ({round(base_stats['stress'])})."
                 if is_es else
-                f"⚠️ High average daily stress ({round(cur_stats['stress'])}) compared to your baseline ({round(base_stats['stress'])})."
+                f"High average daily stress ({round(cur_stats['stress'])}) compared to your baseline ({round(base_stats['stress'])})."
             )
 
     # 7. Carga de entrenamiento (ACWR con EWMA)
@@ -1190,21 +1224,21 @@ def compute_flags(sleep_rows: list, cur_stats: dict, base_stats: dict, act_detai
     if acwr is not None:
         if acwr > 1.50:
             flags.append(
-                f"⚠️ Pico de carga agudo (ACWR {acwr:.2f}): incremento >50% respecto a tu preparación crónica — riesgo elevado de sobrecarga lesiva."
+                f"Pico de carga agudo (ACWR {acwr:.2f}): incremento >50% respecto a tu preparación crónica — riesgo elevado de sobrecarga lesiva."
                 if is_es else
-                f"⚠️ Acute training load spike (ACWR {acwr:.2f}): >50% increase over chronic preparation — elevated injury risk."
+                f"Acute training load spike (ACWR {acwr:.2f}): >50% increase over chronic preparation — elevated injury risk."
             )
         elif acwr > 1.30:
             flags.append(
-                f"ℹ️ Sobrecarga progresiva alta (ACWR {acwr:.2f}): carga exigente en el límite superior seguro."
+                f"Sobrecarga progresiva alta (ACWR {acwr:.2f}): carga exigente en el límite superior seguro."
                 if is_es else
-                f"ℹ️ High progressive overload (ACWR {acwr:.2f}): demanding training load at the upper safe threshold."
+                f"High progressive overload (ACWR {acwr:.2f}): demanding training load at the upper safe threshold."
             )
         elif 0.80 <= acwr <= 1.30 and (cur_stats.get("intensity_week") or 0) >= INTENSITY_TARGET_MIN:
             flags.append(
-                f"✅ Carga de entrenamiento en rango óptimo (ACWR {acwr:.2f}) — estímulo progresivo y seguro."
+                f"Carga de entrenamiento en rango óptimo (ACWR {acwr:.2f}) — estímulo progresivo y seguro."
                 if is_es else
-                f"✅ Training load in optimal range (ACWR {acwr:.2f}) — progressive and safe stimulus."
+                f"Training load in optimal range (ACWR {acwr:.2f}) — progressive and safe stimulus."
             )
 
     # 8. Minutos de intensidad frente a la guía OMS (150–300 equivalentes/semana)
@@ -1212,15 +1246,15 @@ def compute_flags(sleep_rows: list, cur_stats: dict, base_stats: dict, act_detai
     if im is not None:
         if im < INTENSITY_TARGET_MIN:
             flags.append(
-                f"⚠️ Actividad por debajo de la recomendación: {round(im)} min de intensidad esta semana (objetivo {INTENSITY_TARGET_MIN}–{INTENSITY_TARGET_MAX})."
+                f"Actividad por debajo de la recomendación: {round(im)} min de intensidad esta semana (objetivo {INTENSITY_TARGET_MIN}–{INTENSITY_TARGET_MAX})."
                 if is_es else
-                f"⚠️ Physical activity below recommendation: {round(im)} intensity min this week (goal {INTENSITY_TARGET_MIN}–{INTENSITY_TARGET_MAX})."
+                f"Physical activity below recommendation: {round(im)} intensity min this week (goal {INTENSITY_TARGET_MIN}–{INTENSITY_TARGET_MAX})."
             )
         elif im <= INTENSITY_TARGET_MAX:
             flags.append(
-                f"✅ Actividad en rango saludable: {round(im)} min de intensidad (objetivo {INTENSITY_TARGET_MIN}–{INTENSITY_TARGET_MAX})."
+                f"Actividad en rango saludable: {round(im)} min de intensidad (objetivo {INTENSITY_TARGET_MIN}–{INTENSITY_TARGET_MAX})."
                 if is_es else
-                f"✅ Physical activity in healthy range: {round(im)} intensity min (goal {INTENSITY_TARGET_MIN}–{INTENSITY_TARGET_MAX})."
+                f"Physical activity in healthy range: {round(im)} intensity min (goal {INTENSITY_TARGET_MIN}–{INTENSITY_TARGET_MAX})."
             )
 
     # 9. SpO2 nocturna MEDIA baja varias noches (cribado, no diagnóstico).
@@ -1229,9 +1263,9 @@ def compute_flags(sleep_rows: list, cur_stats: dict, base_stats: dict, act_detai
     low_spo2 = sum(1 for n in sleep_rows if n.spo2_avg is not None and n.spo2_avg < 92)
     if low_spo2 >= 3:
         flags.append(
-            f"⚠️ SpO2 nocturna media por debajo de 92% en {low_spo2} noches — señal de cribado (p. ej. apnea del sueño); no es un diagnóstico, coméntalo con un profesional."
+            f"SpO2 nocturna media por debajo de 92% en {low_spo2} noches — señal de cribado (p. ej. apnea del sueño); no es un diagnóstico, coméntalo con un profesional."
             if is_es else
-            f"⚠️ Average overnight SpO2 below 92% across {low_spo2} nights — indicative screening signal (e.g. sleep apnea); consult a physician."
+            f"Average overnight SpO2 below 92% across {low_spo2} nights — indicative screening signal (e.g. sleep apnea); consult a physician."
         )
 
     # 10. Desviación de frecuencia respiratoria nocturna (alerta precoz de infección / estrés)
@@ -1239,9 +1273,9 @@ def compute_flags(sleep_rows: list, cur_stats: dict, base_stats: dict, act_detai
         if cur_stats["resp_avg"] >= base_stats["resp_avg"] + 1.0:
             delta = cur_stats["resp_avg"] - base_stats["resp_avg"]
             flags.append(
-                f"⚠️ Frecuencia respiratoria nocturna elevada (+{delta:.1f} resp/min sobre tu media de {round(base_stats['resp_avg'], 1)}) — posible señal de infección, estrés o inflamación."
+                f"Frecuencia respiratoria nocturna elevada (+{delta:.1f} resp/min sobre tu media de {round(base_stats['resp_avg'], 1)}) — posible señal de infección, estrés o inflamación."
                 if is_es else
-                f"⚠️ Elevated overnight respiration (+{delta:.1f} br/min over baseline {round(base_stats['resp_avg'], 1)}) — possible respiratory infection, stress, or inflammation."
+                f"Elevated overnight respiration (+{delta:.1f} br/min over baseline {round(base_stats['resp_avg'], 1)}) — possible respiratory infection, stress, or inflammation."
             )
 
     # 11. Desacoplamiento aeróbico y asimetría biomecánica en sesiones
@@ -1252,9 +1286,9 @@ def compute_flags(sleep_rows: list, cur_stats: dict, base_stats: dict, act_detai
             if dec is not None and dec > 7.5 and (a.get("duration") or 0) >= 1500:
                 name = act_labels.get(a.get("activity_type_key", ""), a.get("activity_type_key", "session"))
                 flags.append(
-                    f"⚠️ Desacoplamiento aeróbico elevado (+{dec:.1f}%) en {name} ({a.get('day', '')}) — deriva cardíaca atribuible a fatiga aeróbica, calor o deshidratación."
+                    f"Desacoplamiento aeróbico elevado (+{dec:.1f}%) en {name} ({a.get('day', '')}) — deriva cardíaca atribuible a fatiga aeróbica, calor o deshidratación."
                     if is_es else
-                    f"⚠️ High aerobic decoupling (+{dec:.1f}%) in {name} ({a.get('day', '')}) — cardiac drift attributable to aerobic fatigue, heat, or dehydration."
+                    f"High aerobic decoupling (+{dec:.1f}%) in {name} ({a.get('day', '')}) — cardiac drift attributable to aerobic fatigue, heat, or dehydration."
                 )
                 break
         for a in act_detail:
@@ -1263,32 +1297,32 @@ def compute_flags(sleep_rows: list, cur_stats: dict, base_stats: dict, act_detai
                 if is_es:
                     side = "izquierda" if bal > 50.0 else "derecha"
                     flags.append(
-                        f"⚠️ Asimetría de apoyo en carrera ({bal:.1f}% I / {100-bal:.1f}% D) en {a.get('day', '')} — vigila posibles sobrecargas en pierna {side}."
+                        f"Asimetría de apoyo en carrera ({bal:.1f}% I / {100-bal:.1f}% D) en {a.get('day', '')} — vigila posibles sobrecargas en pierna {side}."
                     )
                 else:
                     side = "left" if bal > 50.0 else "right"
                     flags.append(
-                        f"⚠️ Running ground contact asymmetry ({bal:.1f}% L / {100-bal:.1f}% R) on {a.get('day', '')} — watch for potential overload on {side} leg."
+                        f"Running ground contact asymmetry ({bal:.1f}% L / {100-bal:.1f}% R) on {a.get('day', '')} — watch for potential overload on {side} leg."
                     )
                 break
 
     # 12. VO2máx ausente: recordatorio de cómo activarlo
     if cur_stats.get("vo2max") is None:
         flags.append(
-            "ℹ️ Sin VO2máx (el predictor de longevidad más potente): el FR165 lo estima con carreras o caminatas al aire libre con GPS; las sesiones indoor, en cinta o de natación no lo generan."
+            "Sin VO2máx (el predictor de longevidad más potente): se estima con carreras o caminatas al aire libre con GPS; las sesiones indoor, en cinta o de natación no lo generan."
             if is_es else
-            "ℹ️ No VO2max estimate (the strongest single predictor of longevity): the watch estimates it from outdoor GPS runs or walks; indoor/treadmill sessions do not trigger it."
+            "No VO2max estimate (the strongest single predictor of longevity): estimated from outdoor GPS runs or walks; indoor/treadmill sessions do not trigger it."
         )
 
     # Señal positiva global (solo si no hay avisos)
     if (cur_stats.get("sleep_s") and cur_stats["sleep_s"] >= 7.5 * 3600
             and cur_stats.get("score") and cur_stats["score"] >= 85
-            and not any(f.startswith("⚠️") for f in flags)):
-        flags.append("✅ Buena semana de sueño y recuperación." if is_es else "✅ Great week of sleep and recovery.")
+            and not any(is_warn_signal(f) for f in flags)):
+        flags.append("Buena semana de sueño y recuperación." if is_es else "Great week of sleep and recovery.")
 
     if not flags:
-        flags.append("ℹ️ Sin señales destacables: semana dentro de tus rangos habituales." if is_es
-                     else "ℹ️ No noteworthy flags: week within your usual ranges.")
+        flags.append("Sin señales destacables: semana dentro de tus rangos habituales." if is_es
+                     else "No noteworthy flags: week within your usual ranges.")
     return flags
 
 
@@ -1400,7 +1434,7 @@ def recovery_score(cur_stats: dict, base_stats: dict) -> float | None:
 def compute_health_traffic_light(cur_stats: dict, base_stats: dict, flags: list[str],
                                  sleep_rows: list | None = None, lang: str = "en") -> dict:
     """Calcula el estado global (Semáforo de Salud) y 3 frases de diagnóstico en lenguaje natural."""
-    warn_count = sum(1 for f in flags if f.startswith("⚠️"))
+    warn_count = sum(1 for f in flags if is_warn_signal(f))
     rec = recovery_score(cur_stats, base_stats)
     sleep_s = cur_stats.get("sleep_s")
     rhr_cur, rhr_base = cur_stats.get("rhr"), base_stats.get("rhr")
@@ -1820,8 +1854,8 @@ def generate_md(
         for n in sleep_rows
     }
 
-    gen_str = f"Generado el {(generated_on or date.today()).isoformat()} · Garmin Forerunner 165" if is_es \
-              else f"Generated on {(generated_on or date.today()).isoformat()} · Garmin Forerunner 165"
+    gen_str = f"Generado el {(generated_on or date.today()).isoformat()}" if is_es \
+              else f"Generated on {(generated_on or date.today()).isoformat()}"
 
     lines = [
         f"# {title_range(start, end, lang=lang)}\n\n",
@@ -2279,7 +2313,7 @@ def generate_md(
     else:
         if is_es:
             lines.append(
-                "- **VO2máx:** sin datos. El FR165 lo estima a partir de **carreras o caminatas "
+                "- **VO2máx:** sin datos. El reloj lo estima a partir de **carreras o caminatas "
                 "al aire libre con GPS** (y ciclismo con potenciómetro). Las sesiones indoor, en "
                 "cinta o de natación no generan estimación: haz alguna salida al aire libre para "
                 "activarlo.\n"

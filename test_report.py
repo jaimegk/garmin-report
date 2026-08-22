@@ -38,6 +38,7 @@ from generate_report import (
     metric_stats, baseline_range, _sum_dur, _sum_num, _sum_steps, _sum_reg,
     _clamp100, _band, weekly_breakdown, title_range, build_summary,
     day_label, generate_md, main, NO_ACWR, compute_health_traffic_light,
+    is_warn_signal, is_good_signal,
 )
 from render_html import (
     md_to_html, svg_sleep_timeline, svg_week_wheel, svg_line,
@@ -186,14 +187,14 @@ def test_compute_flags():
     flags_en = compute_flags(rows, cur, base, lang="en")
     assert any("Resting HR elevated for 3 consecutive days" in f for f in flags_en), flags_en
 
-    # Semana normal → sin avisos ⚠️
+    # Semana normal → sin avisos de riesgo
     flags = compute_flags([_night()] * 7, cur, base, lang="es")
-    assert not any(f.startswith("⚠️") for f in flags), flags
+    assert not any(is_warn_signal(f) for f in flags), flags
 
     # HRV 15% por debajo de la media → aviso
     low = dict(cur, hrv=51)
     flags = compute_flags([_night()] * 7, low, base, lang="es")
-    assert any("HRV nocturno" in f and f.startswith("⚠️") for f in flags), flags
+    assert any("HRV nocturno" in f and is_warn_signal(f) for f in flags), flags
 
     # Frecuencia respiratoria nocturna desviada ≥ +1.0 resp/min → aviso
     resp_drift = dict(cur, resp_avg=14.8)
@@ -239,8 +240,8 @@ def test_md_to_html():
         "|-----|------:|:---------:|\n"
         "| Lun | 7h30 | 10/20/30/40/0 |\n\n"
         "**Media:** 7h30\n\n"
-        "- ⚠️ Una señal\n"
-        "- ✅ Otra señal\n"
+        "- Una señal de alerta\n"
+        "- Otra señal en rango óptimo\n"
     )
     out = md_to_html(md, {"Sueño": "<svg id='grafica'></svg>"})
 
@@ -254,8 +255,8 @@ def test_md_to_html():
     # El reparto por zonas se dibuja: cinco porcentajes → cuatro segmentos de color
     assert '<i class="z4" style="width:40.0%"></i>' in out and '"z5"' not in out
     # Las viñetas consecutivas forman una sola lista, con su estado por señal.
-    assert ('<ul class="signals"><li class="warn">⚠️ Una señal</li>'
-            '<li class="good">✅ Otra señal</li></ul>') in out
+    assert ('<ul class="signals"><li class="warn">Una señal de alerta</li>'
+            '<li class="good">Otra señal en rango óptimo</li></ul>') in out
 
 
 def test_sleep_timeline_coloca_la_noche_en_su_hora():
@@ -347,8 +348,8 @@ def test_demo_pipeline_end_to_end():
 
     # Los datos de la última semana están hechos para disparar señales: si el
     # informe sale limpio, o los umbrales o el generador se han roto.
-    assert md.count("⚠️") >= 3, md[:600]
-    assert md_es.count("⚠️") >= 3, md_es[:600]
+    assert "Resting HR elevated" in md or "Overnight HRV" in md
+    assert "FC reposo elevada" in md_es or "HRV nocturno" in md_es
 
     # La FC de cada vuelta tiene que ser coherente: mín ≤ media ≤ máx.
     for lo, mid, hi in re.findall(r"\| (\d+)/(\d+)/(\d+) \|", md):
@@ -361,9 +362,9 @@ def test_demo_pipeline_end_to_end():
     # El logo va incrustado —SVG en línea, favicon en base64—, no enlazado: si
     # assets/ desaparece el informe se genera igual y nadie se entera.
     assert '<svg class="logo"' in html and 'href="data:image/png;base64,' in html
-    # Los rótulos de la barra hablan el idioma del informe, no siempre español.
-    assert 'aria-pressed="false">☾ Dark</button>' in html
-    assert 'aria-pressed="false">☾ Oscuro</button>' in html_es
+    # Los rótulos de la barra llevan el símbolo de tema limpio
+    assert 'aria-pressed="false">☾</button>' in html
+    assert 'aria-pressed="false">☾</button>' in html_es
 
     # Modo incrustado (el panel web): mismo informe, sin barra ni glosario propios,
     # para que no choque con los del panel.
@@ -1106,14 +1107,14 @@ def test_weekly_breakdown_and_build_summary():
     assert any("W25" in l and "W26" in l for l in table_lines)
 
     # build_summary con multi-week
-    sum_lines = build_summary(w2["stats"], base, ["⚠️ Señal"], weeks=2, multi_week=True, weekly=[w1, w2], lang="es")
+    sum_lines = build_summary(w2["stats"], base, ["Señal"], weeks=2, multi_week=True, weekly=[w1, w2], lang="es")
     assert any("W25" in l for l in sum_lines)
 
     # build_summary con base insuficiente (< 5 noches)
-    sum_no_base = build_summary(w1["stats"], {"n_nights": 2}, ["ℹ️ Info"], weeks=0, lang="es")
+    sum_no_base = build_summary(w1["stats"], {"n_nights": 2}, ["Info"], weeks=0, lang="es")
     assert any("Histórico insuficiente" in l for l in sum_no_base)
 
-    sum_no_base_en = build_summary(w1["stats"], {"n_nights": 2}, ["ℹ️ Info"], weeks=0, lang="en")
+    sum_no_base_en = build_summary(w1["stats"], {"n_nights": 2}, ["Info"], weeks=0, lang="en")
     assert any("Insufficient baseline" in l for l in sum_no_base_en)
 
 
@@ -1132,17 +1133,17 @@ def test_generate_md_and_build_report_branches():
         sleep_rows=[], stress_map={}, bb_map={}, activity_map={}, steps_map={},
         intensity_map={}, floors_map={}, act_detail=[], laps_map={}, records=[],
         vo2max=None, race_pred=None, start=start, end=end,
-        cur_stats={"n_nights": 0}, base_stats={"n_nights": 0}, flags=["ℹ️ Sin datos"],
+        cur_stats={"n_nights": 0}, base_stats={"n_nights": 0}, flags=["Sin datos"],
         baseline_weeks=4, notice="Aviso de test", lang="es",
     )
     assert "Aviso de test" in md_es
-    assert "sin datos. El FR165 lo estima" in md_es
+    assert "sin datos. El reloj lo estima" in md_es
 
     md_en = generate_md(
         sleep_rows=[], stress_map={}, bb_map={}, activity_map={}, steps_map={},
         intensity_map={}, floors_map={}, act_detail=[], laps_map={}, records=[],
         vo2max=None, race_pred=None, start=start, end=end,
-        cur_stats={"n_nights": 0}, base_stats={"n_nights": 0}, flags=["ℹ️ No data"],
+        cur_stats={"n_nights": 0}, base_stats={"n_nights": 0}, flags=["No data"],
         baseline_weeks=4, notice="Test notice", lang="en",
     )
     assert "Test notice" in md_en
@@ -1411,9 +1412,11 @@ def test_rings_and_tiles_html_branches():
 
 
 def test_md_to_html_all_branches():
-    assert _signal_class("⚠️ Alerta") == "warn"
-    assert _signal_class("ℹ️ Info") == "info"
-    assert _signal_class("Texto normal") == ""
+    assert _signal_class("Alerta") == "warn"
+    assert _signal_class("FC reposo elevada") == "warn"
+    assert _signal_class("Buena semana de sueño") == "good"
+    assert _signal_class("Info") == "info"
+    assert _signal_class("Texto normal") == "info"
 
     assert _slug("FC reposo + HRV") == "fc-reposo-hrv"
     assert _slug("¡¡¿¿!!") == "seccion"
@@ -1432,7 +1435,7 @@ def test_md_to_html_all_branches():
         "_Entradilla del informe_\n\n"
         "---\n\n"
         "## Resumen\n\n"
-        "- ⚠️ Señal 1\n\n"
+        "- Señal 1\n\n"
         "| Métrica | Valor |\n"
         "|---------|------:|\n"
         "| FC | 50 |\n\n"
@@ -1617,7 +1620,7 @@ def test_compute_health_traffic_light():
     # 1. Estado óptimo
     cur_opt = {"sleep_s": 8 * 3600, "score": 88, "sri": 85, "hrv": 65, "rhr": 45, "stress": 22, "acwr": 1.05}
     base_opt = {"n_nights": 7, "sleep_s": 7.8 * 3600, "hrv": 62, "rhr": 46, "stress": 24}
-    tl_opt_es = compute_health_traffic_light(cur_opt, base_opt, ["✅ Buena semana de sueño y recuperación."], lang="es")
+    tl_opt_es = compute_health_traffic_light(cur_opt, base_opt, ["Buena semana de sueño y recuperación."], lang="es")
     assert tl_opt_es["state"] == "optimal"
     assert tl_opt_es["badge"] == "🟢"
     assert "Excelente duración" in tl_opt_es["sleep_diag"]
@@ -1628,7 +1631,7 @@ def test_compute_health_traffic_light():
     diag = compute_health_traffic_light(sin_estres, base_opt, [], lang="en")["recovery_diag"]
     assert diag.endswith(".") and " ." not in diag
 
-    tl_opt_en = compute_health_traffic_light(cur_opt, base_opt, ["✅ Good week of sleep and recovery."], lang="en")
+    tl_opt_en = compute_health_traffic_light(cur_opt, base_opt, ["Good week of sleep and recovery."], lang="en")
     assert tl_opt_en["state"] == "optimal"
     assert tl_opt_en["badge"] == "🟢"
     assert "duration" in tl_opt_en["sleep_diag"].lower()
@@ -1637,7 +1640,7 @@ def test_compute_health_traffic_light():
     # 2. Estado atención / warning por déficit de sueño y estrés
     cur_warn = {"sleep_s": 6.2 * 3600, "score": 68, "sri": 64, "hrv": 54, "rhr": 49, "stress": 42, "acwr": 1.45}
     base_warn = {"n_nights": 7, "hrv": 60, "rhr": 46, "stress": 26}
-    flags_warn = ["⚠️ 2 noches por debajo de 6 h de sueño.", "⚠️ Estrés medio elevado."]
+    flags_warn = ["2 noches por debajo de 6 h de sueño.", "Estrés medio elevado."]
     tl_warn = compute_health_traffic_light(cur_warn, base_warn, flags_warn, lang="es")
     assert tl_warn["state"] == "warning"
     assert tl_warn["badge"] == "🟡"
@@ -1647,7 +1650,7 @@ def test_compute_health_traffic_light():
     # 3. Estado descanso / recovery por múltiples alertas o caída fuerte
     cur_rec = {"sleep_s": 5.5 * 3600, "score": 50, "sri": 55, "hrv": 42, "rhr": 54, "stress": 48, "acwr": 1.6}
     base_rec = {"n_nights": 7, "hrv": 62, "rhr": 46, "stress": 25}
-    flags_rec = ["⚠️ Alerta 1", "⚠️ Alerta 2", "⚠️ Alerta 3"]
+    flags_rec = ["Alerta 1", "Alerta 2", "Alerta 3"]
     tl_rec = compute_health_traffic_light(cur_rec, base_rec, flags_rec, lang="es")
     assert tl_rec["state"] == "recovery"
     assert tl_rec["badge"] == "🔴"

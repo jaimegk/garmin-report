@@ -42,28 +42,28 @@
       <!-- Acciones y Herramientas -->
       <div class="app-actions">
         <button id="btn-lang" class="action-btn lang-btn" type="button" title="Switch to Spanish" aria-label="Switch to Spanish">
-          🇬🇧 EN
+          🇬🇧
         </button>
         <button id="btn-open-sync" class="action-btn primary" title="Sync with Garmin Connect">
-          <span class="icon">🔄</span> <span data-i18n="lbl_sync">Sync</span>
+          <span data-i18n="lbl_sync">Sync</span>
         </button>
         <button id="btn-open-upload" class="action-btn" title="Load garmin_data.db file">
-          <span class="icon">📁</span> <span data-i18n="lbl_upload">Upload</span>
+          <span data-i18n="lbl_upload">Upload</span>
         </button>
         <button id="btn-open-demo" class="action-btn" title="Try with synthetic demo data">
-          <span class="icon">✨</span> <span data-i18n="lbl_demo">Demo</span>
+          <span data-i18n="lbl_demo">Demo</span>
         </button>
         <button id="btn-open-glossary" class="action-btn" title="Educational health metric glossary">
-          <span class="icon">📖</span> <span data-i18n="lbl_glossary">Glossary</span>
+          <span data-i18n="lbl_glossary">Glossary</span>
         </button>
         <button id="btn-open-settings" class="action-btn" data-i18n-title="lbl_settings" title="Settings">
-          <span class="icon">⚙️</span>
+          <span data-i18n="lbl_settings">Settings</span>
         </button>
         <button id="btn-print" class="action-btn" title="Export to PDF or Print">
-          <span class="icon">🖨️</span>
+          <span data-i18n="lbl_print">Print</span>
         </button>
         <button id="theme-btn" class="theme-toggle" type="button" aria-label="Toggle dark/light theme">
-          ☾ Dark
+          ☾
         </button>
       </div>
     </div>
@@ -81,27 +81,24 @@
     <!-- Estado de Bienvenida / Onboarding Zero-Tech -->
     <div id="onboarding-view" class="center-state" style="display: none;">
       <div class="onboarding-card">
-        <div class="onboarding-badge" data-i18n="onboarding_badge">👋 Welcome to BioDelta!</div>
+        <div class="onboarding-badge" data-i18n="onboarding_badge">Welcome to BioDelta!</div>
         <h2 data-i18n="onboarding_title">Your Garmin health metrics, clear and private</h2>
         <p class="onboarding-subtitle" data-i18n="onboarding_subtitle">100% local on your device, no external servers. Choose how to start:</p>
         
         <div class="onboarding-grid">
           <div class="onboarding-option" id="card-connect-garmin">
-            <span class="option-icon">🔐</span>
             <h3 data-i18n="card_garmin_title">Connect with Garmin</h3>
             <p data-i18n="card_garmin_desc">Sign in with your Garmin Connect account to sync automatically with 2FA support.</p>
             <button class="btn primary" data-i18n="card_garmin_btn">Connect Garmin</button>
           </div>
 
           <div class="onboarding-option" id="card-upload-file">
-            <span class="option-icon">📂</span>
             <h3 data-i18n="card_upload_title">Load Database</h3>
             <p data-i18n="card_upload_desc">Drag and drop your existing <code>garmin_data.db</code> file to visualize it instantly.</p>
             <button class="btn secondary" data-i18n="card_upload_btn">Upload File</button>
           </div>
 
           <div class="onboarding-option" id="card-demo-mode">
-            <span class="option-icon">✨</span>
             <h3 data-i18n="card_demo_title">Demo Mode</h3>
             <p data-i18n="card_demo_desc">Explore a full report with synthetic demo data without needing a watch.</p>
             <button class="btn secondary" data-i18n="card_demo_btn">View Demo</button>
@@ -121,7 +118,7 @@
   <div id="modal-sync" class="modal-overlay" aria-hidden="true">
     <div class="modal-box">
       <div class="modal-head">
-        <h3 data-i18n="sync_modal_title">🔄 Sync with Garmin Connect</h3>
+        <h3 data-i18n="sync_modal_title">Sync with Garmin Connect</h3>
         <button class="btn-close" data-close="modal-sync">✕</button>
       </div>
       
@@ -174,7 +171,7 @@
             </div>
 
             <p class="privacy-note" data-i18n="privacy_note">
-              🔒 Your credentials are used exclusively to obtain the Garmin session locally and are never sent to third parties.
+              Your credentials are used exclusively to obtain the Garmin session locally and are never sent to third parties.
             </p>
 
             <button type="submit" id="btn-submit-login" class="btn primary full-width" data-i18n="btn_submit_login">
@@ -186,7 +183,6 @@
         <!-- Sub-formulario 2FA (aparece cuando Garmin requiere verificación) -->
         <div id="sync-mfa-box" class="mfa-box" style="display: none;">
           <div class="mfa-header">
-            <span class="mfa-icon">📱</span>
             <h4 data-i18n="mfa_title">Two-Step Verification (2FA)</h4>
           </div>
           <p id="mfa-instructions" data-i18n="mfa_instructions">Enter the security code Garmin sent to your phone or email:</p>
@@ -203,12 +199,11 @@
   <div id="modal-upload" class="modal-overlay" aria-hidden="true">
     <div class="modal-box">
       <div class="modal-head">
-        <h3 data-i18n="upload_modal_title">📁 Load Database</h3>
+        <h3 data-i18n="upload_modal_title">Load Database</h3>
         <button class="btn-close" data-close="modal-upload">✕</button>
       </div>
       <div class="modal-body">
         <div id="drop-zone" class="drop-zone">
-          <span class="drop-icon">📦</span>
           <h4 data-i18n="upload_drop_title">Drag your <code>garmin_data.db</code> file here</h4>
           <p data-i18n="upload_drop_subtitle">or click to browse your computer</p>
           <input type="file" id="file-input" accept=".db,.sqlite,.sqlite3" style="display: none;">
@@ -223,11 +218,11 @@
   <div id="modal-glossary" class="modal-overlay" aria-hidden="true">
     <div class="modal-box wide">
       <div class="modal-head">
-        <h3 data-i18n="glossary_modal_title">📖 Health & Metric Glossary</h3>
+        <h3 data-i18n="glossary_modal_title">Health & Metric Glossary</h3>
         <button class="btn-close" data-close="modal-glossary">✕</button>
       </div>
       <div class="modal-filter-bar">
-        <input type="search" id="modal-glossary-search" placeholder="🔍 Search metric or concept (e.g. SRI, HRV, ACWR)...">
+        <input type="search" id="modal-glossary-search" placeholder="Search metric or concept (e.g. SRI, HRV, ACWR)...">
         <div class="glossary-categories" id="glossary-cats">
           <button type="button" class="cat-pill active" data-cat="all" data-i18n="cat_all">All</button>
           <button type="button" class="cat-pill" data-cat="Sleep" data-i18n="cat_sleep">Sleep</button>
@@ -246,7 +241,7 @@
   <div id="modal-settings" class="modal-overlay" aria-hidden="true">
     <div class="modal-box">
       <div class="modal-head">
-        <h3 data-i18n="settings_modal_title">⚙️ Target Settings</h3>
+        <h3 data-i18n="settings_modal_title">Target Settings</h3>
         <button class="btn-close" data-close="modal-settings">✕</button>
       </div>
       <div class="modal-body">

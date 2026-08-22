@@ -26,7 +26,7 @@ El informe se genera en español o en inglés (`--lang es|en`, o la bandera del 
 **[▶ Ver un informe de ejemplo interactivo](https://jaimegk.github.io/biodelta/)** ·
 [versión Markdown](docs/ejemplo_garmin_log.md)
 
-## 🚀 Inicio Rápido en 1-Clic
+## Inicio Rápido en 1-Clic
 
 Puedes usar BioDelta sin escribir código ni configurar entornos manualmente:
 
@@ -47,7 +47,7 @@ cd biodelta
 ./iniciar.sh
 ```
 
-Al abrir la aplicación, pulsa **✨ Demo** para explorar un informe completo de seis semanas con
+Al abrir la aplicación, pulsa **Demo** para explorar un informe completo de seis semanas con
 datos sintéticos y todas las señales activas. Sin cuenta, sin credenciales y sin conexión.
 
 ## Qué lo hace distinto
@@ -60,7 +60,7 @@ regularidad del sueño, recuperación autonómica y estrés, y qué hacer hoy.
 `garmin_data.db` o sincroniza con tu cuenta de Garmin, con **verificación en dos pasos
 (2FA/MFA)**. El servidor escucha en `127.0.0.1` y solo atiende peticiones nacidas en él.
 
-**Glosario integrado.** Un botón `📖 Glosario` con una explicación clara y basada en
+**Glosario integrado.** Un botón `Glosario` con una explicación clara y basada en
 evidencia de cada métrica (SRI, ACWR, RMSSD, desacoplamiento aeróbico, VO2máx…).
 
 **Gráficas sincronizadas.** Pasa el ratón sobre cualquier día para ver sus valores exactos y
@@ -170,7 +170,7 @@ del sistema, y al pasar el ratón sobre una barra o un punto se ve su valor exac
 Las noches de sueño se etiquetan por el día en que te acostaste (no por el de despertar), y
 las lecturas inválidas de estrés/Body Battery (`value < 0`) se descartan.
 
-> **Nota sobre el VO2máx:** el Forerunner 165 solo lo estima a partir de **carreras o
+> **Nota sobre el VO2máx:** los relojes Garmin solo lo estiman a partir de **carreras o
 > caminatas al aire libre con GPS** (o ciclismo con potenciómetro). Las sesiones indoor, en
 > cinta o de natación no generan estimación; si no aparece, haz alguna salida al aire libre.
 
