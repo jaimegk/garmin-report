@@ -1,1 +1,1 @@
-garmin-health-data
+garmin-health-data>=2.11,<3

@@ -9,10 +9,12 @@ Uso:
   python generate_report.py --no-sync                         # última semana, sin sync
   python generate_report.py --start-date 2026-05-28           # desde fecha hasta hoy
   python generate_report.py --start-date 2026-05-01 --end-date 2026-05-31
+  python generate_report.py --demo                            # ejemplo con datos sintéticos
   python generate_report.py --inspect-schema                  # lista tablas y columnas
 """
 
 import argparse
+import shutil
 import sqlite3
 import statistics
 import subprocess
@@ -21,6 +23,7 @@ from collections import namedtuple
 from datetime import date, datetime, timedelta
 from pathlib import Path
 
+import demo_data
 import render_html
 
 PROJECT_DIR = Path(__file__).parent
@@ -249,13 +252,20 @@ def parse_date(s: str) -> date:
 # Sincronización
 # ---------------------------------------------------------------------------
 
+def garmin_bin() -> str | None:
+    """Ejecutable de garmin-health-data: el del venv del proyecto, o el del PATH
+    para quien lo haya instalado con pipx o a nivel de sistema."""
+    return str(VENV_BIN) if VENV_BIN.exists() else shutil.which("garmin")
+
+
 def sync(start: date | None = None, end: date | None = None):
-    if not VENV_BIN.exists():
-        print(f"[ERROR] No se encuentra el ejecutable: {VENV_BIN}", file=sys.stderr)
+    binary = garmin_bin()
+    if not binary:
+        print(f"[ERROR] No se encuentra el ejecutable `garmin` (ni en {VENV_BIN} ni en el PATH)", file=sys.stderr)
         print("Ejecuta: python3 -m venv .venv && .venv/bin/pip install -r requirements.txt", file=sys.stderr)
         sys.exit(1)
 
-    cmd = [str(VENV_BIN), "extract"]
+    cmd = [binary, "extract"]
     if start:
         # Sin rango, `garmin extract` solo trae lo nuevo desde el último dato de la
         # BD: pedir un informe antiguo daría un informe vacío. Su --end-date es
@@ -832,19 +842,41 @@ def _sum_reg(v):
     return f"±{round(v)} min" if v is not None else "–"
 
 
-# Métricas del Resumen: (etiqueta, clave en metric_stats, formateador, unidad, es_duración).
-# Única fuente para las tres variantes de tabla (semanal, sin histórico, multi-semana).
+# Métricas del Resumen: (etiqueta, clave en metric_stats, formateador, unidad,
+# es_duración, dirección buena). Única fuente para las tres variantes de tabla
+# (semanal, sin histórico, multi-semana) y para las tarjetas del HTML.
+# La dirección no se puede deducir del signo de la tendencia: subir es malo en FC
+# en reposo y bueno en VO2máx. None = ni bueno ni malo por sí solo.
 SUMMARY_SPECS = [
-    ("Sueño",                   "sleep_s",        _sum_dur,                       "",     True),
-    ("Regularidad (acostarse)", "bed_sd",         _sum_reg,                       " min", False),
-    ("Score sueño",             "score",          _sum_num,                       "",     False),
-    ("FC reposo",               "rhr",            lambda v: _sum_num(v, " bpm"),  " bpm", False),
-    ("HRV nocturno",            "hrv",            lambda v: _sum_num(v, " ms"),   " ms",  False),
-    ("VO2máx",                  "vo2max",         _sum_num,                       "",     False),
-    ("Estrés medio",            "stress",         _sum_num,                       "",     False),
-    ("Pasos/día",               "steps",          _sum_steps,                     "",     False),
-    ("Min. intensidad/sem",     "intensity_week", lambda v: _sum_num(v, " min"),  " min", False),
+    ("Sueño",                   "sleep_s",        _sum_dur,                       "",     True,  "up"),
+    ("Regularidad (acostarse)", "bed_sd",         _sum_reg,                       " min", False, "down"),
+    ("Score sueño",             "score",          _sum_num,                       "",     False, "up"),
+    ("FC reposo",               "rhr",            lambda v: _sum_num(v, " bpm"),  " bpm", False, "down"),
+    ("HRV nocturno",            "hrv",            lambda v: _sum_num(v, " ms"),   " ms",  False, "up"),
+    ("VO2máx",                  "vo2max",         _sum_num,                       "",     False, "up"),
+    ("Estrés medio",            "stress",         _sum_num,                       "",     False, "down"),
+    ("Pasos/día",               "steps",          _sum_steps,                     "",     False, "up"),
+    ("Min. intensidad/sem",     "intensity_week", lambda v: _sum_num(v, " min"),  " min", False, None),
 ]
+
+
+def summary_tiles(cur_stats: dict, base_stats: dict) -> list[tuple]:
+    """(etiqueta, valor, tendencia, estado) por métrica, para la cabecera del HTML.
+
+    El estado es "good"/"bad"/"" según si la métrica se ha movido hacia su lado
+    bueno; sin histórico con el que comparar, no se moja.
+    """
+    comparable = base_stats["n_nights"] >= 5
+    tiles = []
+    for label, key, fmt, unit, as_dur, good in SUMMARY_SPECS:
+        cur, base = cur_stats[key], base_stats[key]
+        trend = fmt_trend(cur, base, unit, as_duration=as_dur) if comparable else ""
+        state = ""
+        if good and comparable and cur is not None and base is not None and cur != base:
+            rose = cur > base
+            state = "good" if rose == (good == "up") else "bad"
+        tiles.append((label, fmt(cur), trend, state))
+    return tiles
 
 
 def weekly_breakdown(weekly: list, base: dict) -> list[str]:
@@ -861,7 +893,7 @@ def weekly_breakdown(weekly: list, base: dict) -> list[str]:
         f"| Métrica | {heads} | Tendencia |\n",
         f"|---------|{'------:|' * len(weekly)}:---------:|\n",
     ]
-    for label, key, fmt, unit, as_dur in SUMMARY_SPECS:
+    for label, key, fmt, unit, as_dur, _good in SUMMARY_SPECS:
         cells = " | ".join(fmt(w["stats"][key]) for w in weekly)
         trend = fmt_trend(cur[key], base[key], unit, as_duration=as_dur)
         out.append(f"| {label} | {cells} | {trend} |\n")
@@ -872,7 +904,11 @@ def weekly_breakdown(weekly: list, base: dict) -> list[str]:
 
 def build_summary(cur_stats: dict, base_stats: dict, flags: list[str], weeks: int,
                   multi_week: bool = False, weekly: list | None = None) -> list[str]:
-    lines = ["## Resumen\n\n"]
+    # Las señales van primero: lo primero que quieres saber al abrir el informe es
+    # qué merece atención, no una tabla de nueve filas que hay que interpretar.
+    lines = ["## Resumen\n\n", "### Señales\n\n"]
+    lines += [f"- {f}\n" for f in flags]
+    lines.append("\n### Métricas\n\n")
     if multi_week and weekly:
         lines += weekly_breakdown(weekly, base_stats)
     elif base_stats["n_nights"] >= 5:
@@ -880,7 +916,7 @@ def build_summary(cur_stats: dict, base_stats: dict, flags: list[str], weeks: in
             f"| Métrica | Esta semana | Tu media (~{weeks} sem) | Tendencia |\n",
             "|---------|------------:|------------------------:|:---------:|\n",
         ]
-        for label, key, fmt, unit, as_dur in SUMMARY_SPECS:
+        for label, key, fmt, unit, as_dur, _good in SUMMARY_SPECS:
             trend = fmt_trend(cur_stats[key], base_stats[key], unit, as_duration=as_dur)
             lines.append(f"| {label} | {fmt(cur_stats[key])} | {fmt(base_stats[key])} | {trend} |\n")
     else:
@@ -888,14 +924,12 @@ def build_summary(cur_stats: dict, base_stats: dict, flags: list[str], weeks: in
             "| Métrica | Esta semana |\n",
             "|---------|------------:|\n",
         ]
-        for label, key, fmt, _unit, _as_dur in SUMMARY_SPECS:
+        for label, key, fmt, _unit, _as_dur, _good in SUMMARY_SPECS:
             lines.append(f"| {label} | {fmt(cur_stats[key])} |\n")
         lines.append(
             "\n_Histórico insuficiente para comparar tendencias (se necesitan ~2 semanas"
             " previas). Aparecerá automáticamente cuando haya más datos._\n"
         )
-    lines.append("\n### Señales\n\n")
-    lines += [f"- {f}\n" for f in flags]
     lines.append("\n---\n\n")
     return lines
 
@@ -931,6 +965,8 @@ def generate_md(
     flags: list[str],
     baseline_weeks: int,
     weekly: list | None = None,
+    generated_on: date | None = None,
+    notice: str = "",
 ) -> str:
     num_days = (end - start).days + 1
     multi_week = num_days > 7
@@ -949,9 +985,11 @@ def generate_md(
 
     lines = [
         f"# Garmin log — {titulo}\n\n",
-        f"_Generado el {date.today().isoformat()} · Garmin Forerunner 165_\n\n",
-        "---\n\n",
+        f"_Generado el {(generated_on or date.today()).isoformat()} · Garmin Forerunner 165_\n\n",
     ]
+    if notice:
+        lines.append(f"**{notice}**\n\n")
+    lines.append("---\n\n")
 
     lines += build_summary(cur_stats, base_stats, flags, baseline_weeks, multi_week, weekly)
 
@@ -1308,48 +1346,9 @@ def generate_md(
     return "".join(lines)
 
 
-# ---------------------------------------------------------------------------
-# Entrada
-# ---------------------------------------------------------------------------
-
-def main():
-    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("--no-sync", action="store_true", help="No llama a garmin extract (BD ya actualizada)")
-    parser.add_argument("--inspect-schema", action="store_true", help="Muestra las tablas y columnas de la BD y sale")
-    parser.add_argument("--start-date", metavar="YYYY-MM-DD", help="Fecha de inicio del informe (por defecto: lunes de la semana pasada)")
-    parser.add_argument("--end-date", metavar="YYYY-MM-DD", help="Fecha de fin del informe (por defecto: domingo de la semana pasada, o hoy si se usa --start-date)")
-    args = parser.parse_args()
-
-    if args.end_date and not args.start_date:
-        parser.error("--end-date requiere --start-date")
-
-    if args.start_date:
-        start = parse_date(args.start_date)
-        end = parse_date(args.end_date) if args.end_date else date.today() - timedelta(days=1)
-    else:
-        start, end = last_week_range()
-
-    if end < start:
-        parser.error(f"--end-date ({end}) es anterior a --start-date ({start})")
-
-    if not args.no_sync:
-        print(f"Sincronizando con Garmin Connect ({start} – {end})...")
-        sync(start, end)
-
-    if not DB_PATH.exists():
-        print(f"[ERROR] BD no encontrada: {DB_PATH}", file=sys.stderr)
-        print("Autentica primero con: .venv/bin/garmin auth", file=sys.stderr)
-        sys.exit(1)
-
-    conn = sqlite3.connect(DB_PATH)
-
-    if args.inspect_schema:
-        inspect_schema(conn)
-        conn.close()
-        return
-
-    print(f"Generando informe: {start} – {end} ({(end - start).days + 1} días)")
-
+def build_report(conn: sqlite3.Connection, start: date, end: date,
+                 generated_on: date | None = None, notice: str = "") -> tuple[str, str]:
+    """Genera el informe completo a partir de la BD: devuelve (markdown, html)."""
     # Offset UTC→local para que las agregaciones por día (y las horas de sueño)
     # usen la fecha local, no la UTC en que Garmin guarda los timeseries.
     tz_min = tz_offset_minutes(conn)
@@ -1386,7 +1385,6 @@ def main():
         cur_stats = metric_stats(conn, start, end, tz_min)
         b_start, b_end = baseline_range(start, BASELINE_WEEKS)
         base_stats = metric_stats(conn, b_start, b_end, tz_min)
-    conn.close()
 
     flags = compute_flags(sleep_rows, cur_stats, base_stats)
 
@@ -1397,18 +1395,80 @@ def main():
         sleep_rows, stress_map, bb_map, activity_map, steps_map, intensity_map,
         floors_map, act_detail, laps_map, records,
         vo2max, race_pred, start, end, cur_stats, base_stats, flags, BASELINE_WEEKS, weekly,
+        generated_on, notice,
     )
+
+    return md, render_html.render(md, sleep_rows, stress_map, bb_map, steps_map,
+                                  start, end, tiles=summary_tiles(cur_stats, base_stats))
+
+
+# ---------------------------------------------------------------------------
+# Entrada
+# ---------------------------------------------------------------------------
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    parser.add_argument("--demo", action="store_true", help="Genera un informe de ejemplo con datos sintéticos (no necesita cuenta de Garmin)")
+    parser.add_argument("--no-sync", action="store_true", help="No llama a garmin extract (BD ya actualizada)")
+    parser.add_argument("--inspect-schema", action="store_true", help="Muestra las tablas y columnas de la BD y sale")
+    parser.add_argument("--start-date", metavar="YYYY-MM-DD", help="Fecha de inicio del informe (por defecto: lunes de la semana pasada)")
+    parser.add_argument("--end-date", metavar="YYYY-MM-DD", help="Fecha de fin del informe (por defecto: domingo de la semana pasada, o hoy si se usa --start-date)")
+    args = parser.parse_args()
+
+    if args.end_date and not args.start_date:
+        parser.error("--end-date requiere --start-date")
+
+    db_path, generated_on = DB_PATH, date.today()
+    if args.demo:
+        if args.start_date or args.end_date:
+            parser.error("--demo trae su propio rango de fechas: no lo combines con --start-date/--end-date")
+        db_path = OUTPUT_DIR / "demo.db"
+        db_path.parent.mkdir(exist_ok=True)
+        db_path.unlink(missing_ok=True)
+        print("Construyendo la base de datos de ejemplo (datos sintéticos)...")
+        start, end = demo_data.build(db_path)
+        generated_on = demo_data.GENERATED_ON
+        args.no_sync = True
+    elif args.start_date:
+        start = parse_date(args.start_date)
+        end = parse_date(args.end_date) if args.end_date else date.today() - timedelta(days=1)
+    else:
+        start, end = last_week_range()
+
+    if end < start:
+        parser.error(f"--end-date ({end}) es anterior a --start-date ({start})")
+
+    if not args.no_sync:
+        print(f"Sincronizando con Garmin Connect ({start} – {end})...")
+        sync(start, end)
+
+    if not db_path.exists():
+        print(f"[ERROR] BD no encontrada: {db_path}", file=sys.stderr)
+        print("Autentica primero con: .venv/bin/garmin auth", file=sys.stderr)
+        sys.exit(1)
+
+    conn = sqlite3.connect(db_path)
+
+    if args.inspect_schema:
+        inspect_schema(conn)
+        conn.close()
+        return
+
+    print(f"Generando informe: {start} – {end} ({(end - start).days + 1} días)")
+
+    notice = ("Informe de ejemplo con datos sintéticos: no corresponde a ninguna "
+              "persona real.") if args.demo else ""
+    md, html = build_report(conn, start, end, generated_on, notice)
+    conn.close()
+
+    OUTPUT_DIR.mkdir(exist_ok=True)
     output_path = OUTPUT_DIR / f"garmin_log_{start.isoformat()}_{end.isoformat()}.md"
-    output_path.parent.mkdir(exist_ok=True)
     output_path.write_text(md, encoding="utf-8")
     print(f"Informe guardado en: {output_path}")
 
     # Misma información, formato legible por un humano: tablas + gráficas SVG.
     html_path = output_path.with_suffix(".html")
-    html_path.write_text(
-        render_html.render(md, sleep_rows, stress_map, bb_map, steps_map, start, end),
-        encoding="utf-8",
-    )
+    html_path.write_text(html, encoding="utf-8")
     print(f"Versión HTML en: {html_path}")
 
 

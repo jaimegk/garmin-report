@@ -1,158 +1,165 @@
 # Garmin Weekly Report
 
-Extrae tus datos de [Garmin Connect](https://connect.garmin.com) a una base de datos
-SQLite local y genera un informe semanal en Markdown con sueño, frecuencia cardíaca en
-reposo, HRV nocturno, estrés, Body Battery, actividades y pasos.
+_**English** · [Español](README.es.md)_
 
-Además compara cada semana con tu **media de las ~4 semanas previas** y resalta
-**señales** automáticas (FC reposo elevada varios días, HRV por debajo de lo habitual,
-noches cortas, estrés alto…), para que el informe no sea solo un registro sino que te
-diga qué merece atención.
+[![Tests](https://github.com/jaimegk/garmin-report/actions/workflows/tests.yml/badge.svg)](https://github.com/jaimegk/garmin-report/actions/workflows/tests.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
-Todo corre en local: tus credenciales y tus datos de salud nunca salen de tu máquina.
+Turn your [Garmin Connect](https://connect.garmin.com) data into a weekly health report that
+tells you **what deserves attention** — not just what happened.
 
-```
-garmin extract (incremental)  →  garmin_data.db (SQLite)  →  output/garmin_log_<inicio>_<fin>.md
-                                                          └→  output/garmin_log_<inicio>_<fin>.html
-```
+Every metric is compared against **your own average over the previous ~4 weeks** (not against
+population norms), and that comparison drives automatic **signals**: resting heart rate up for
+several days in a row, HRV below your usual, short nights, irregular bedtimes, high stress.
 
-## Ejemplo de salida
+Everything runs locally. Your credentials and your health data never leave your machine.
 
-```markdown
-# Garmin log — semana 2026-W25 (16 jun – 22 jun 2026)
+> The report itself is written in Spanish. The code, the docs and this README are in English.
 
-_Generado el 2026-06-23 · Garmin Forerunner 165_
+![Report header: metric cards and automatic signals](docs/screenshot.png)
 
-## Resumen
+**[▶ See a full example report](https://jaimegk.github.io/garmin-report/)** ·
+[Markdown version](docs/ejemplo_garmin_log.md)
 
-| Métrica | Esta semana | Tu media (~4 sem) | Tendencia |
-|---------|------------:|------------------:|:---------:|
-| Sueño | 7h34 | 7h52 | ▼ 18 min |
-| Regularidad (acostarse) | ±34 min | ±28 min | ▲ 6 min |
-| FC reposo | 49 bpm | 46 bpm | ▲ 3 bpm |
-| HRV nocturno | 56 ms | 63 ms | ▼ 7 ms |
-| VO2máx | 48 | 47 | ▲ 1 |
-| Min. intensidad/sem | 210 min | 240 min | ▼ 30 min |
-| ... |   |   |   |
-
-### Señales
-
-- ⚠️ FC reposo elevada 3 días seguidos respecto a tu media — posible fatiga.
-- ⚠️ HRV nocturno un 11% por debajo de tu media — prioriza descanso.
-- ⚠️ Horario de sueño irregular: la hora de acostarte varía ±66 min esta semana.
-```
-
-Ver [`docs/ejemplo_garmin_log.md`](docs/ejemplo_garmin_log.md) para un informe completo de ejemplo.
-
-## Requisitos
-
-- Python 3.10+ (probado con 3.12)
-- Una cuenta de Garmin Connect
-
-## Instalación
+## Try it in 30 seconds (no Garmin account needed)
 
 ```bash
-git clone https://github.com/<tu-usuario>/garmin-weekly-report.git
-cd garmin-weekly-report
+git clone https://github.com/jaimegk/garmin-report.git
+cd garmin-report
+python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
 
-python3 -m venv .venv
-.venv/bin/pip install -r requirements.txt
+.venv/bin/python generate_report.py --demo
 ```
 
-## Configuración
+`--demo` builds a synthetic six-week database and generates the full report into `output/`.
+No account, no credentials, no network.
 
-Copia el fichero de ejemplo y rellena tus credenciales de Garmin Connect:
+## What makes it different
+
+**Signals, not just numbers.** The report opens by telling you what to look at. Nine rules
+compare the week against your baseline and flag whatever stands out.
+
+**Your baseline, not the population's.** "49 bpm" means nothing on its own; "49 bpm when
+yours is 46, three days running" does.
+
+**Both charts tell the same story.** When resting heart rate climbs, HRV drops — the report
+shows them side by side instead of leaving you to cross-reference tables.
+
+![Resting heart rate and overnight HRV: the fatigue spike and its mirror](docs/screenshot-charts.png)
+
+**The metrics that actually matter.** VO2max is the single strongest predictor of all-cause
+mortality, and a mid-range watch covers 7 of the ~14 best-evidenced risk factors. The full
+write-up (in Spanish) is in
+[`docs/mortalidad_prematura_y_forerunner165.md`](docs/mortalidad_prematura_y_forerunner165.md).
+
+**Two formats, two readers.** The `.md` is meant to be handed to an AI; the `.html` is meant
+to be read by you.
+
+```
+garmin extract (incremental)  →  garmin_data.db (SQLite)  →  output/garmin_log_<start>_<end>.md
+                                                          └→  output/garmin_log_<start>_<end>.html
+```
+
+## Requirements
+
+- Python 3.10+ (tested on 3.12)
+- A Garmin Connect account (not needed for `--demo`)
+
+## Setup
+
+`garmin auth` reads `GARMIN_EMAIL` and `GARMIN_PASSWORD` from the environment; if they are
+missing it prompts for them. If you would rather keep them in a file:
 
 ```bash
-cp .env.example .env
-# edita .env con tu email y contraseña
+cp .env.example .env          # then fill in your credentials
+set -a; source .env; set +a   # export them into this shell
+.venv/bin/garmin auth         # may ask for two-factor verification
 ```
 
-```ini
-GARMIN_EMAIL=tu@email.com
-GARMIN_PASSWORD=tu_contraseña
-```
+This creates the session that later syncs reuse. `.env` is in `.gitignore`, and the tokens are
+stored under `~/.garminconnect/`, outside the repository.
 
-El `.env` está en `.gitignore` y nunca se sube al repositorio.
-
-### Primer uso: autenticación
-
-La primera vez tienes que autenticarte (puede pedir verificación en dos pasos):
+## Usage
 
 ```bash
-.venv/bin/garmin auth
-```
-
-Esto crea la sesión que reutilizarán las siguientes sincronizaciones.
-
-## Uso
-
-```bash
-# Semana ISO anterior (lun–dom) + sincroniza con Garmin
+# Previous ISO week (Mon–Sun) + sync with Garmin
 python generate_report.py
 
-# Misma semana pero sin sincronizar (BD ya actualizada)
+# Same week, no sync (database already up to date)
 python generate_report.py --no-sync
 
-# Desde una fecha hasta hoy
+# From a date up to today
 python generate_report.py --start-date 2026-05-28
 
-# Rango concreto: en periodos de más de una semana, el Resumen se trocea en
-# semanas ISO y muestra la evolución y la tendencia (última semana vs anteriores)
+# Explicit range: for periods longer than a week the summary breaks down into ISO
+# weeks and shows the week-by-week evolution and trend (last week vs the rest)
 python generate_report.py --start-date 2026-05-01 --end-date 2026-05-31
 
-# Inspeccionar el esquema de la BD (tablas y columnas)
+# Example report built from synthetic data
+python generate_report.py --demo
+
+# Inspect the database schema (tables and columns)
 python generate_report.py --inspect-schema
 ```
 
-El informe se escribe en `output/garmin_log_<inicio>_<fin>.md` (el nombre incluye
-siempre el rango de fechas evaluado, p. ej. `garmin_log_2026-06-22_2026-06-28.md`).
+### The HTML version
 
-### Versión HTML
+Every run also writes an `.html` next to the `.md`: formatted tables, the card header, and
+**charts for sleep stages, resting heart rate, HRV, stress over Body Battery, and daily steps**.
 
-Cada ejecución escribe además un `.html` con el mismo nombre. Es el mismo informe con
-las tablas ya formateadas y **gráficas de fases del sueño, FC en reposo, HRV, estrés
-sobre Body Battery y pasos diarios**; el markdown está pensado para pasárselo a una IA
-y el HTML para leerlo tú.
+It opens with a double click — a single self-contained file with no JavaScript and no external
+resources, so it works offline and travels well to a phone. It follows the system light/dark
+theme, and hovering a bar or a point shows its exact value.
 
-Se abre con doble clic: es un fichero autocontenido, sin JavaScript ni recursos
-externos, así que funciona offline y también sirve para mandártelo al móvil. Se adapta
-al tema claro/oscuro del sistema, y al pasar el ratón sobre una barra o un punto se ve
-su valor exacto.
+## What's in the report
 
-## Qué incluye el informe
+| Section | Metrics |
+|---------|---------|
+| **Summary** | Automatic signals first, then every metric against your ~4-week average. Reports spanning **more than one week** switch to a **week-by-week evolution table** with trends |
+| **Sleep** | Duration, stages (deep / REM / light), score, **bedtime and wake time + regularity**, time awake, **naps**, awakenings, stress during sleep, and Body Battery recovered |
+| **Resting HR + HRV** | Resting heart rate, overnight HRV (approx. RMSSD) and HRV status |
+| **Respiration & SpO2** | Overnight SpO2 (average / lowest) and respiration rate — indicative, for screening |
+| **Stress & Body Battery** | Daily average stress, Body Battery high and low |
+| **Activity** | Sessions (type and duration), average HR, **intensity minutes**, Body Battery delta, steps and floors |
+| **Session detail** | Per session: distance, pace, average/max HR, HR zone split, aerobic/anaerobic effect, kcal, and sport-specific metrics (cadence, stride, GCT, power, elevation gain; SWOLF and lengths for swimming) |
+| **Laps** | Per session: time, distance, pace, min/avg/max HR, cadence and elevation (up / down) for each lap |
+| **Fitness** | VO2max and predicted race times |
 
-| Sección | Métricas |
-|---------|----------|
-| **Resumen** | Cada métrica frente a tu media de ~4 semanas + señales automáticas (incluye VO2máx, regularidad del sueño y minutos de intensidad). En informes de **más de una semana** pasa a una **tabla de evolución semana a semana** con tendencia |
-| **Sueño** | Horas, fases (deep / REM / light), score, **hora de acostarse/despertar + regularidad**, desvelo medio, **siestas**, despertares, estrés durante el sueño y Body Battery recuperada |
-| **FC reposo + HRV** | Frecuencia cardíaca en reposo, HRV nocturno (RMSSD aprox.) y estado de HRV |
-| **Respiración y SpO2** | SpO2 nocturna (media / mínima) y frecuencia respiratoria — orientativo, cribado |
-| **Estrés y Body Battery** | Estrés medio diario, máximo y mínimo de Body Battery |
-| **Actividad** | Sesiones (tipo y duración), FC media, **minutos de intensidad**, delta de Body Battery, pasos y pisos |
-| **Detalle de sesiones** | Por sesión: distancia, ritmo, FC media/máx, reparto en zonas de FC, efecto aeróbico/anaeróbico, kcal y métricas propias del deporte (cadencia, zancada, GCT, potencia, D+; SWOLF y largos en natación) |
-| **Vueltas** | Tabla por sesión con tiempo, distancia, ritmo, FC mín/med/máx, cadencia y desnivel (subida / bajada) de cada vuelta |
-| **Forma física** | VO2máx (el predictor de longevidad más potente) y ritmos de carrera previstos |
+Sleep is attributed to the day you went to bed (not the day you woke up), and invalid
+stress/Body Battery readings (`value < 0`) are discarded.
 
-Las noches de sueño se etiquetan por el día en que te acostaste (no por el de
-despertar), y las lecturas inválidas de estrés/Body Battery (`value < 0`) se descartan.
+> **On VO2max:** the Forerunner 165 only estimates it from **outdoor runs or walks with GPS**
+> (or cycling with a power meter). Indoor, treadmill and swimming sessions produce no estimate.
 
-> **Nota sobre el VO2máx:** el Forerunner 165 solo lo estima a partir de **carreras o
-> caminatas al aire libre con GPS** (o ciclismo con potenciómetro). Las sesiones indoor,
-> en cinta o de natación no generan estimación; si no aparece, haz alguna salida al aire
-> libre. El análisis completo de qué métricas predicen mortalidad y cuáles mide el FR165
-> está en [`docs/mortalidad_prematura_y_forerunner165.md`](docs/mortalidad_prematura_y_forerunner165.md).
+## Tests
 
-## Privacidad
+```bash
+python test_report.py     # no framework, just asserts
+```
 
-Este proyecto **no incluye datos personales**. Los siguientes ficheros se generan en
-local y están excluidos por `.gitignore`:
+They cover the formatters, the sleep-regularity maths, the signal rules, the Markdown
+converter and the SVG charts. The end-to-end test builds the demo database and runs the whole
+pipeline, which is what exercises the SQL queries.
 
-- `.env` — tus credenciales
-- `garmin_data.db` — base de datos SQLite con tu historial
-- `garmin_files/` — ficheros `.fit` y JSON descargados de Garmin
-- `output/` — informes generados (`.md` y `.html`)
+## Privacy
 
-## Licencia
+This repository contains **no personal data**. The following is generated locally and excluded
+by `.gitignore`:
+
+- `.env` — your credentials
+- `garmin_data.db` — the SQLite database with your history
+- `garmin_files/` — `.fit` and JSON files downloaded from Garmin
+- `output/` — generated reports (`.md` and `.html`)
+
+The example report published under `docs/` is generated with `--demo`: synthetic data that
+belongs to no real person.
+
+## Disclaimer
+
+This is a personal wellness project, not a medical device. Wrist-optical metrics are
+indicative, and the associations cited are population-level: they do not diagnose anything in
+any individual.
+
+## License
 
 [MIT](LICENSE)

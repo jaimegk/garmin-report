@@ -11,3 +11,11 @@ output/
 .venv/
 __pycache__/
 *.pyc
+
+# Editores y sistema operativo
+.DS_Store
+.idea/
+.vscode/
+
+# Base de datos del modo demo
+demo.db

@@ -1,18 +1,22 @@
 #!/usr/bin/env python3
-"""Comprobaciones mínimas de la lógica pura de generate_report.py.
+"""Comprobaciones de generate_report.py y render_html.py.
 
 Ejecutar: python test_report.py  (sin dependencias, solo asserts)
 """
 
 import re
+import sqlite3
+import tempfile
 import types
 from datetime import date
+from pathlib import Path
 
 import generate_report
+import demo_data
 from generate_report import (
     SleepNight, bed_minutes, wake_minutes, sd_minutes, fmt_duration,
     fmt_trend, fmt_hms, iso_weeks_in_range, compute_flags,
-    fmt_pace, fmt_zones, sync,
+    fmt_pace, fmt_zones, sync, build_report, summary_tiles,
 )
 from render_html import md_to_html, svg_bars
 
@@ -146,6 +150,56 @@ def test_sync_pasa_el_rango_a_extract():
     assert calls[1][1:] == ["extract", "--start-date", "2026-04-11"]
     # Sin rango, sincronización incremental de siempre
     assert calls[2][1:] == ["extract"]
+
+
+def test_demo_pipeline_end_to_end():
+    """El pipeline entero sobre la BD de ejemplo: consultas SQL, agregados,
+    señales, markdown y HTML. Es lo único que ejerce las funciones `query_*`."""
+    with tempfile.TemporaryDirectory() as tmp:
+        db = Path(tmp) / "demo.db"
+        start, end = demo_data.build(db)
+        conn = sqlite3.connect(db)
+        md, html = build_report(conn, start, end, demo_data.GENERATED_ON)
+        conn.close()
+
+    for section in ("## Resumen", "### Señales", "### Métricas", "## Sueño",
+                    "## FC reposo + HRV nocturno", "## Respiración y SpO2 nocturnos",
+                    "## Estrés y Body Battery", "## Actividad",
+                    "### Detalle de sesiones", "### Vueltas", "## Forma física"):
+        assert section in md, f"falta la sección {section!r}"
+
+    # La fecha de generación es la del dataset, no la de hoy: si no, el ejemplo
+    # publicado cambiaría en cada ejecución.
+    assert f"_Generado el {demo_data.GENERATED_ON.isoformat()}" in md
+
+    # Los datos de la última semana están hechos para disparar señales: si el
+    # informe sale limpio, o los umbrales o el generador se han roto.
+    assert md.count("⚠️") >= 3, md[:600]
+
+    # La FC de cada vuelta tiene que ser coherente: mín ≤ media ≤ máx.
+    for lo, mid, hi in re.findall(r"\| (\d+)/(\d+)/(\d+) \|", md):
+        assert int(lo) <= int(mid) <= int(hi), f"FC incoherente: {lo}/{mid}/{hi}"
+
+    # Y el HTML es autocontenido: sin recursos externos, se abre offline.
+    assert html.startswith("<!doctype html>") and "</html>" in html
+    assert '<div class="tiles">' in html and "<svg" in html
+    assert "http://" not in html and "https://" not in html
+
+
+def test_summary_tiles_conocen_la_direccion_buena():
+    # Subir es malo en FC en reposo y bueno en VO2máx: el color no puede salir
+    # del signo de la tendencia.
+    cur = {"rhr": 52, "vo2max": 49, "sleep_s": 7 * 3600, "bed_sd": 30, "score": 80,
+           "hrv": 60, "stress": 30, "steps": 9000, "intensity_week": 200, "n_nights": 7}
+    base = dict(cur, rhr=46, vo2max=47, n_nights=7)
+    state = {label: st for label, _v, _t, st in summary_tiles(cur, base)}
+    assert state["FC reposo"] == "bad"
+    assert state["VO2máx"] == "good"
+    assert state["Min. intensidad/sem"] == ""      # ni bueno ni malo por sí solo
+
+    # Sin histórico con el que comparar, ninguna tarjeta se moja.
+    sin_base = dict(base, n_nights=0)
+    assert all(st == "" and tr == "" for _l, _v, tr, st in summary_tiles(cur, sin_base))
 
 
 if __name__ == "__main__":
