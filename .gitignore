@@ -11,6 +11,8 @@ output/
 .venv/
 __pycache__/
 *.pyc
+.coverage
+.pytest_cache/
 
 # Editores y sistema operativo
 .DS_Store

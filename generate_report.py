@@ -201,13 +201,13 @@ def sport_extras(a: dict) -> str:
     if a.get("hrr_60"):
         p.append(f"HRR60 {round(a['hrr_60'])} bpm")
     if a.get("avg_power") or a.get("cycling_power"):
-        p.append(f"pot. {round(a['avg_power'] or a['cycling_power'])} W")
+        p.append(f"pot. {round(a.get('avg_power') or a.get('cycling_power'))} W")
     if a.get("elevation_gain"):
         p.append(f"D+ {round(a['elevation_gain'])} m")
     if a.get("avg_swolf"):
         p.append(f"SWOLF {round(a['avg_swolf'])}")
     if a.get("active_lengths"):
-        p.append(f"{a['active_lengths']} largos de {round(a['pool_length'] / 100)} m")
+        p.append(f"{a['active_lengths']} largos de {round((a.get('pool_length') or 0) / 100)} m")
     if a.get("strokes"):
         p.append(f"{round(a['strokes'])} brazadas")
     if a.get("avg_biking_cadence"):
@@ -1393,8 +1393,8 @@ def weekly_breakdown(weekly: list, base: dict) -> list[str]:
         f"|---------|{'------:|' * len(weekly)}:---------:|\n",
     ]
     for label, key, fmt, unit, as_dur, _good in SUMMARY_SPECS:
-        cells = " | ".join(fmt(w["stats"][key]) for w in weekly)
-        trend = fmt_trend(cur[key], base[key], unit, as_duration=as_dur)
+        cells = " | ".join(fmt(w["stats"].get(key)) for w in weekly)
+        trend = fmt_trend(cur.get(key), base.get(key), unit, as_duration=as_dur)
         out.append(f"| {label} | {cells} | {trend} |\n")
     legend = " · ".join(f"{w['wk_label']}: {w['range_label']}" for w in weekly)
     out.append(f"\n_{legend}_\n")
@@ -1425,21 +1425,21 @@ def build_summary(cur_stats: dict, base_stats: dict, flags: list[str], weeks: in
     lines.append("\n### Métricas\n\n")
     if multi_week and weekly:
         lines += weekly_breakdown(weekly, base_stats)
-    elif base_stats["n_nights"] >= 5:
+    elif base_stats.get("n_nights", 0) >= 5:
         lines += [
             f"| Métrica | Esta semana | Tu media (~{weeks} sem) | Tendencia |\n",
             "|---------|------------:|------------------------:|:---------:|\n",
         ]
         for label, key, fmt, unit, as_dur, _good in SUMMARY_SPECS:
-            trend = fmt_trend(cur_stats[key], base_stats[key], unit, as_duration=as_dur)
-            lines.append(f"| {label} | {fmt(cur_stats[key])} | {fmt(base_stats[key])} | {trend} |\n")
+            trend = fmt_trend(cur_stats.get(key), base_stats.get(key), unit, as_duration=as_dur)
+            lines.append(f"| {label} | {fmt(cur_stats.get(key))} | {fmt(base_stats.get(key))} | {trend} |\n")
     else:
         lines += [
             "| Métrica | Esta semana |\n",
             "|---------|------------:|\n",
         ]
         for label, key, fmt, _unit, _as_dur, _good in SUMMARY_SPECS:
-            lines.append(f"| {label} | {fmt(cur_stats[key])} |\n")
+            lines.append(f"| {label} | {fmt(cur_stats.get(key))} |\n")
         lines.append(
             "\n_Histórico insuficiente para comparar tendencias (se necesitan ~2 semanas"
             " previas). Aparecerá automáticamente cuando haya más datos._\n"
