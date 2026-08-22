@@ -160,6 +160,9 @@ This is a personal wellness project, not a medical device. Wrist-optical metrics
 indicative, and the associations cited are population-level: they do not diagnose anything in
 any individual.
 
+Development notes: [CONTRIBUTING.md](CONTRIBUTING.md) — how to regenerate the
+example, and the Garmin data-model gotchas worth knowing before changing a query.
+
 ## License
 
 [MIT](LICENSE)

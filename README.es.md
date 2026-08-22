@@ -157,6 +157,10 @@ Esto es un proyecto de bienestar personal, no un dispositivo médico. Las métri
 muñeca son orientativas y las asociaciones que se citan son poblacionales: no diagnostican
 nada en una persona concreta.
 
+Notas de desarrollo: [CONTRIBUTING.md](CONTRIBUTING.md) — cómo regenerar el ejemplo
+y las trampas del modelo de datos de Garmin que conviene conocer antes de tocar una
+consulta.
+
 ## Licencia
 
 [MIT](LICENSE)
