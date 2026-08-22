@@ -3,11 +3,11 @@
   <img src="assets/logo/logo-256.png" alt="" width="72">
 </picture>
 
-# Garmin Weekly Report
+# BioDelta
 
 _**English** · [Español](README.es.md)_
 
-[![Tests](https://github.com/jaimegk/garmin-report/actions/workflows/tests.yml/badge.svg)](https://github.com/jaimegk/garmin-report/actions/workflows/tests.yml)
+[![Tests](https://github.com/jaimegk/biodelta/actions/workflows/tests.yml/badge.svg)](https://github.com/jaimegk/biodelta/actions/workflows/tests.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
 Turn your [Garmin Connect](https://connect.garmin.com) data into a weekly health report that
@@ -26,14 +26,14 @@ Everything runs locally. Your credentials and your health data never leave your 
   <img src="docs/screenshot.png" alt="Report header: summary rings, metric sheet and automatic signals">
 </picture>
 
-**[▶ See a full example report](https://jaimegk.github.io/garmin-report/)** ·
+**[▶ See a full example report](https://jaimegk.github.io/biodelta/)** ·
 [Markdown version](docs/ejemplo_garmin_log.md)
 
 ## Try it in 30 seconds (no Garmin account needed)
 
 ```bash
-git clone https://github.com/jaimegk/garmin-report.git
-cd garmin-report
+git clone https://github.com/jaimegk/biodelta.git
+cd biodelta
 python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
 
 .venv/bin/python generate_report.py --demo
@@ -53,7 +53,10 @@ yours is 46, three days running" does.
 **Both charts tell the same story.** When resting heart rate climbs, HRV drops — the report
 shows them side by side instead of leaving you to cross-reference tables.
 
-![Resting heart rate and overnight HRV: the fatigue spike and its mirror](docs/screenshot-charts.png)
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/screenshot-charts-dark.png">
+  <img src="docs/screenshot-charts.png" alt="Resting heart rate and overnight HRV: the fatigue spike and its mirror">
+</picture>
 
 **The metrics that actually matter.** VO2max is the single strongest predictor of all-cause
 mortality, and a mid-range watch covers 7 of the ~14 best-evidenced risk factors. The full

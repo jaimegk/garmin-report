@@ -61,8 +61,8 @@ WEEK_PLAN = {
 # días (lo que dispara la señal de fatiga) y remite despacio. El HRV hace el
 # camino inverso. Explícito y no aleatorio, para que las dos gráficas del informe
 # cuenten lo mismo en vez de tres días planos por azar de la semilla.
-HARD_RHR = [49, 52, 53, 52, 50, 49, 48]
-HARD_HRV_FACTOR = [0.92, 0.82, 0.78, 0.80, 0.85, 0.88, 0.90]
+HARD_RHR = [48, 51, 54, 52, 50, 49, 47]
+HARD_HRV_FACTOR = [0.93, 0.85, 0.74, 0.79, 0.87, 0.91, 0.96]
 # Desfases de la hora de acostarse en la semana dura (minutos): dispersión
 # suficiente para que salte la señal de horario irregular.
 HARD_BED_SHIFT = [0, 75, -50, 90, -35, 120, -20]

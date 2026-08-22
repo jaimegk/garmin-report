@@ -11,7 +11,7 @@ _Generado el 2026-06-22 · Garmin Forerunner 165_
 ### Señales
 
 - ⚠️ FC reposo elevada 3 días seguidos respecto a tu media (46 bpm) — posible fatiga, estrés o estar incubando algo.
-- ⚠️ HRV nocturno un 15% por debajo de tu media (fuera de tu banda normal 57–67 ms) — señal de carga/estrés; prioriza descanso.
+- ⚠️ HRV nocturno un 14% por debajo de tu media (fuera de tu banda normal 57–67 ms) — señal de carga/estrés; prioriza descanso.
 - ⚠️ 2 noches por debajo de 6 h de sueño.
 - ⚠️ Regularidad de sueño baja (SRI 62/100, jetlag social 4 min): horarios variables que desincronizan el ritmo circadiano — la regularidad influye en la longevidad tanto como la duración.
 - ⚠️ Estrés medio elevado (37) frente a tu media (28).
@@ -27,9 +27,9 @@ _Generado el 2026-06-22 · Garmin Forerunner 165_
 | Sueño | 6h52 | 7h51 | ▼ 59 min |
 | Regularidad (SRI) | 62/100 | 94/100 | ▼ 32/100 |
 | Score sueño | 64 | 80 | ▼ 16 |
-| FC reposo | 50 bpm | 46 bpm | ▲ 5 bpm |
-| HRV nocturno | 52 ms | 62 ms | ▼ 9 ms |
-| Estabilidad HRV | 1.8% | 0.7% | ▲ 1% |
+| FC reposo | 50 bpm | 46 bpm | ▲ 4 bpm |
+| HRV nocturno | 53 ms | 62 ms | ▼ 9 ms |
+| Estabilidad HRV | 2.5% | 0.7% | ▲ 2% |
 | Carga (ACWR) | 1.15 | 1.14 | ■ = |
 | VO2máx | 48 | 47 | ▲ 1 |
 | Estrés medio | 37 | 28 | ▲ 9 |
@@ -60,15 +60,15 @@ _La regularidad circadiana (SRI) y la dispersión horaria influyen en la salud y
 
 | Día   | FC reposo | HRV (RMSSD aprox.) |
 |-----|---------:|-------------------:|
-| Lun | 49 bpm | 57 ms |
-| Mar | 52 bpm | 51 ms |
-| Mié | 53 bpm | 47 ms |
-| Jue | 52 bpm | 51 ms |
-| Vie | 50 bpm | 51 ms |
-| Sáb | 49 bpm | 57 ms |
-| Dom | 48 bpm | 54 ms |
+| Lun | 48 bpm | 58 ms |
+| Mar | 51 bpm | 53 ms |
+| Mié | 54 bpm | 44 ms |
+| Jue | 52 bpm | 50 ms |
+| Vie | 50 bpm | 52 ms |
+| Sáb | 49 bpm | 59 ms |
+| Dom | 47 bpm | 57 ms |
 
-**Media:** 50 bpm · HRV medio: 52 ms (banda normal 57–67 ms) · CV: 1.8% · Estado HRV: desequilibrado
+**Media:** 50 bpm · HRV medio: 53 ms (banda normal 57–67 ms) · CV: 2.5% · Estado HRV: desequilibrado
 
 ## Respiración y SpO2 nocturnos
 

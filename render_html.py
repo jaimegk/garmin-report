@@ -1083,17 +1083,17 @@ td, th, .num { font-variant-numeric: tabular-nums; }
           -webkit-backdrop-filter: saturate(180%) blur(20px);
           border-bottom: 1px solid var(--hairline); }
 .topbar-in { max-width: 68rem; margin: 0 auto; height: 100%; padding: 0 1.5rem;
-             display: flex; align-items: center; gap: 1.25rem; }
-.brand { font-size: .8rem; font-weight: 600; letter-spacing: -.01em; white-space: nowrap; }
-.navlinks { display: flex; gap: 1.1rem; overflow-x: auto; scrollbar-width: none;
-            flex: 1; }
+             display: flex; align-items: center; gap: 1rem; }
+.brand { font-size: .8rem; font-weight: 600; letter-spacing: -.01em; white-space: nowrap; flex-shrink: 0; }
+.navlinks { display: flex; gap: .85rem; overflow-x: auto; scrollbar-width: none;
+            flex: 1; min-width: 0; }
 .navlinks::-webkit-scrollbar { display: none; }
 .navlinks a { color: var(--ink2); text-decoration: none; font-size: .76rem;
-              white-space: nowrap; }
+              white-space: nowrap; flex-shrink: 0; }
 .navlinks a:hover { color: var(--ink); }
 .theme-btn { margin-left: auto; border: 1px solid var(--hairline); background: none;
              color: var(--ink); border-radius: 980px; padding: .2rem .7rem;
-             font: inherit; font-size: .74rem; cursor: pointer; white-space: nowrap; }
+             font: inherit; font-size: .74rem; cursor: pointer; white-space: nowrap; flex-shrink: 0; }
 .theme-btn:hover { background: var(--surface); }
 
 /* Portada */
@@ -1338,7 +1338,7 @@ figcaption.note { font-size: .76rem; font-weight: 400; color: var(--muted);
 
 THEME_JS = """
 (function () {
-  var root = document.documentElement, key = 'garmin-report-theme';
+  var root = document.documentElement, key = 'biodelta-theme';
   var btn = document.getElementById('theme-btn');
   function paint(t) {
     root.dataset.theme = t;
@@ -1356,7 +1356,7 @@ THEME_JS = """
 
 # Se ejecuta antes de pintar nada: si el tema guardado es el oscuro, entra ya
 # oscuro en vez de parpadear en blanco. El claro es el de serie.
-THEME_BOOT = ("try{var t=localStorage.getItem('garmin-report-theme');"
+THEME_BOOT = ("try{var t=localStorage.getItem('biodelta-theme')||localStorage.getItem('garmin-report-theme');"
               "if(t==='dark')document.documentElement.dataset.theme='dark'}catch(e){}")
 
 
@@ -1385,8 +1385,12 @@ def favicon_link() -> str:
 
 def _navbar(title: str, body: str) -> str:
     """Índice construido con las secciones que ya haya generado el md."""
+    _NAV_LABELS = {
+        "FC reposo + HRV nocturno": "FC reposo + HRV",
+        "Respiración y SpO2 nocturnos": "Respiración y SpO2",
+    }
     links = "".join(
-        f'<a href="#{sid}">{name}</a>'
+        f'<a href="#{sid}">{_NAV_LABELS.get(name, name)}</a>'
         for sid, name in re.findall(
             r'<section class="sec" id="([^"]+)">.*?<h2>(.*?)</h2>', body)
     )

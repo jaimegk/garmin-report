@@ -3,7 +3,7 @@
   <img src="assets/logo/logo-256.png" alt="" width="72">
 </picture>
 
-# Garmin Weekly Report
+# BioDelta
 
 _[English](README.md) · **Español**_
 
@@ -21,14 +21,14 @@ Todo corre en local: tus credenciales y tus datos de salud nunca salen de tu má
   <img src="docs/screenshot.png" alt="Cabecera del informe: anillos de resumen, cifras y señales automáticas">
 </picture>
 
-**[▶ Ver un informe de ejemplo completo](https://jaimegk.github.io/garmin-report/)** ·
+**[▶ Ver un informe de ejemplo completo](https://jaimegk.github.io/biodelta/)** ·
 [versión Markdown](docs/ejemplo_garmin_log.md)
 
 ## Pruébalo en 30 segundos (sin cuenta de Garmin)
 
 ```bash
-git clone https://github.com/jaimegk/garmin-report.git
-cd garmin-report
+git clone https://github.com/jaimegk/biodelta.git
+cd biodelta
 python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
 
 .venv/bin/python generate_report.py --demo
@@ -48,7 +48,10 @@ cuando lo tuyo son 46, tres días seguidos» sí.
 **Las dos gráficas cuentan la misma historia.** Cuando la FC en reposo sube, el HRV baja: el
 informe lo enseña en paralelo en vez de dejarte cruzar tablas.
 
-![FC en reposo y HRV nocturno: el pico de fatiga y su espejo](docs/screenshot-charts.png)
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/screenshot-charts-dark.png">
+  <img src="docs/screenshot-charts.png" alt="FC en reposo y HRV nocturno: el pico de fatiga y su espejo">
+</picture>
 
 **Las métricas que de verdad importan.** El VO2máx es el predictor de mortalidad por
 cualquier causa más potente que existe, y un reloj de gama media cubre 7 de los ~14 factores
