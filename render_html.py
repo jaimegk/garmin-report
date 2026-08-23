@@ -1025,7 +1025,7 @@ def status_card_html(tl: dict | None, lang: str = "en") -> str:
     )
 
 
-def glossary_modal_html(lang: str = "en") -> str:
+def glossary_modal_html(lang: str = "en", modal_id: str = "glossary-modal") -> str:
     """Modal interactivo con el glosario de términos de salud y longevidad."""
     is_es = lang == "es"
     glossary_data = METRIC_EXPLANATIONS.get(lang, METRIC_EXPLANATIONS["en"])
@@ -1057,7 +1057,7 @@ def glossary_modal_html(lang: str = "en") -> str:
     cat_well = "Bienestar" if is_es else "Wellness"
 
     return (
-        f'<div id="glossary-modal" class="modal-backdrop" aria-hidden="true" role="dialog" aria-label="{title_modal}">'
+        f'<div id="{modal_id}" class="modal-backdrop" aria-hidden="true" role="dialog" aria-label="{title_modal}">'
         '<div class="modal-dialog">'
         '<div class="modal-header">'
         f'<h3>{title_modal}</h3>'
@@ -1960,11 +1960,10 @@ rect.is-synced-active {
 }
 """
 
-THEME_JS = """
+THEME_JS = r"""
 (function () {
   var root = document.documentElement, key = 'biodelta-theme';
   var btn = document.getElementById('theme-btn');
-  var isEs = (document.documentElement.lang || 'en') === 'es';
   function paint(t) {
     root.dataset.theme = t;
     if (btn) {
@@ -2004,7 +2003,8 @@ THEME_JS = """
     var dayText = target.getAttribute('data-day') || '';
     var tipText = target.getAttribute('data-tip') || (target.querySelector('title') ? target.querySelector('title').textContent : dayText);
     
-    document.querySelectorAll('[data-day-idx="' + idx + '"]').forEach(function (el) {
+    var container = target.closest('.lang-view') || document;
+    container.querySelectorAll('[data-day-idx="' + idx + '"]').forEach(function (el) {
       el.classList.add('is-synced-active');
     });
     var rect = target.getBoundingClientRect();
@@ -2015,45 +2015,61 @@ THEME_JS = """
     var target = e.target.closest('[data-day-idx]');
     if (!target) return;
     var idx = target.getAttribute('data-day-idx');
-    document.querySelectorAll('[data-day-idx="' + idx + '"]').forEach(function (el) {
+    var container = target.closest('.lang-view') || document;
+    container.querySelectorAll('[data-day-idx="' + idx + '"]').forEach(function (el) {
       el.classList.remove('is-synced-active');
     });
     hideTip();
   });
 
   // 2. Glosario Modal
-  var gModal = document.getElementById('glossary-modal');
-  var gBtn = document.getElementById('glossary-btn');
-  var gClose = document.getElementById('glossary-close');
-  var gSearch = document.getElementById('glossary-search');
-  var gPills = document.querySelectorAll('.cat-pill');
+  function getActiveGlossaryModal() {
+    var isEs = (document.documentElement.lang || 'en') === 'es';
+    var esModal = document.getElementById('glossary-modal-es');
+    var enModal = document.getElementById('glossary-modal-en');
+    if (isEs && esModal) return esModal;
+    if (!isEs && enModal) return enModal;
+    return document.getElementById('glossary-modal');
+  }
 
   function openGlossary() {
+    var gModal = getActiveGlossaryModal();
     if (!gModal) return;
     gModal.classList.add('is-open');
     gModal.setAttribute('aria-hidden', 'false');
-    if (gSearch) { gSearch.value = ''; gSearch.focus(); filterCards(); }
+    var gSearch = gModal.querySelector('input[type="search"]');
+    if (gSearch) { gSearch.value = ''; gSearch.focus(); filterCards(gModal); }
   }
   function closeGlossary() {
-    if (!gModal) return;
-    gModal.classList.remove('is-open');
-    gModal.setAttribute('aria-hidden', 'true');
-  }
-  if (gBtn) gBtn.addEventListener('click', openGlossary);
-  if (gClose) gClose.addEventListener('click', closeGlossary);
-  if (gModal) {
-    gModal.addEventListener('click', function (e) {
-      if (e.target === gModal) closeGlossary();
+    document.querySelectorAll('.modal-backdrop').forEach(function (m) {
+      m.classList.remove('is-open');
+      m.setAttribute('aria-hidden', 'true');
     });
   }
+
+  var gBtn = document.getElementById('glossary-btn');
+  if (gBtn) gBtn.addEventListener('click', openGlossary);
+
+  document.addEventListener('click', function (e) {
+    if (e.target.classList.contains('modal-close') || e.target.closest('.modal-close')) {
+      closeGlossary();
+    } else if (e.target.classList.contains('modal-backdrop')) {
+      closeGlossary();
+    }
+  });
+
   document.addEventListener('keydown', function (e) {
     if (e.key === 'Escape') closeGlossary();
   });
 
-  var currentCat = 'all';
-  function filterCards() {
+  function filterCards(modal) {
+    if (!modal) modal = getActiveGlossaryModal();
+    if (!modal) return;
+    var gSearch = modal.querySelector('input[type="search"]');
+    var activePill = modal.querySelector('.cat-pill.active');
+    var currentCat = activePill ? (activePill.getAttribute('data-cat') || 'all') : 'all';
     var query = (gSearch ? gSearch.value : '').toLowerCase().trim();
-    document.querySelectorAll('.glossary-card').forEach(function (card) {
+    modal.querySelectorAll('.glossary-card').forEach(function (card) {
       var cat = card.getAttribute('data-category');
       var matchCat = (currentCat === 'all' || cat === currentCat);
       var matchText = !query || card.textContent.toLowerCase().includes(query);
@@ -2061,23 +2077,105 @@ THEME_JS = """
     });
   }
 
-  if (gSearch) gSearch.addEventListener('input', filterCards);
-  gPills.forEach(function (pill) {
-    pill.addEventListener('click', function () {
-      gPills.forEach(function (p) { p.classList.remove('active'); });
-      pill.classList.add('active');
-      currentCat = pill.getAttribute('data-cat') || 'all';
-      filterCards();
-    });
+  document.addEventListener('input', function (e) {
+    if (e.target && e.target.matches('.modal-filter-bar input[type="search"]')) {
+      filterCards(e.target.closest('.modal-backdrop'));
+    }
   });
+
+  document.addEventListener('click', function (e) {
+    var pill = e.target.closest('.cat-pill');
+    if (pill) {
+      var modal = pill.closest('.modal-backdrop');
+      if (modal) {
+        modal.querySelectorAll('.cat-pill').forEach(function (p) { p.classList.remove('active'); });
+        pill.classList.add('active');
+        filterCards(modal);
+      }
+    }
+  });
+
+  // 3. Conmutador de Idioma (Standalone HTML & Demo)
+  function applyLang(l) {
+    document.documentElement.lang = l;
+    try { localStorage.setItem('biodelta-lang', l); } catch (e) {}
+    var isEs = l === 'es';
+    var lBtn = document.getElementById('lang-btn');
+    if (lBtn) {
+      lBtn.textContent = isEs ? '🇪🇸 ES' : '🇬🇧 EN';
+      lBtn.title = isEs ? 'Cambiar a inglés' : 'Switch to Spanish';
+      lBtn.setAttribute('aria-label', lBtn.title);
+    }
+    document.querySelectorAll('[data-lang]').forEach(function (el) {
+      el.style.display = (el.getAttribute('data-lang') === l) ? '' : 'none';
+    });
+    var enView = document.getElementById('report-lang-en');
+    var esView = document.getElementById('report-lang-es');
+    if (enView && esView) {
+      enView.style.display = isEs ? 'none' : 'block';
+      esView.style.display = isEs ? 'block' : 'none';
+    }
+    var enGlossary = document.getElementById('glossary-modal-en');
+    var esGlossary = document.getElementById('glossary-modal-es');
+    if (enGlossary && esGlossary) {
+      if (enGlossary.classList.contains('is-open') || esGlossary.classList.contains('is-open')) {
+        closeGlossary();
+        openGlossary();
+      }
+    }
+  }
+
+  var lBtn = document.getElementById('lang-btn');
+  if (lBtn) {
+    lBtn.addEventListener('click', function () {
+      var current = document.documentElement.lang || 'en';
+      var next = current === 'es' ? 'en' : 'es';
+      var enView = document.getElementById('report-lang-en');
+      var esView = document.getElementById('report-lang-es');
+      if (enView && esView) {
+        applyLang(next);
+        return;
+      }
+      try { localStorage.setItem('biodelta-lang', next); } catch (e) {}
+      var url = new URL(window.location.href);
+      var pathname = url.pathname;
+      if (pathname.endsWith('_es.html') && next === 'en') {
+        url.pathname = pathname.replace(/_es\.html$/, '.html');
+      } else if (pathname.endsWith('.html') && !pathname.endsWith('_es.html') && next === 'es') {
+        url.pathname = pathname.replace(/\.html$/, '_es.html');
+      } else {
+        url.searchParams.set('lang', next);
+      }
+      window.location.href = url.toString();
+    });
+  }
+
+  try {
+    var params = new URLSearchParams(window.location.search);
+    var savedLang = params.get('lang') || localStorage.getItem('biodelta-lang');
+    if (savedLang && (savedLang === 'es' || savedLang === 'en')) {
+      var enView = document.getElementById('report-lang-en');
+      var esView = document.getElementById('report-lang-es');
+      if (enView && esView) {
+        applyLang(savedLang);
+      }
+    }
+  } catch (e) {}
 
 })();
 """
 
 # Se ejecuta antes de pintar nada: si el tema guardado es el oscuro, entra ya
 # oscuro en vez de parpadear en blanco. El claro es el de serie.
-THEME_BOOT = ("try{var t=localStorage.getItem('biodelta-theme')||localStorage.getItem('garmin-report-theme');"
-              "if(t==='dark')document.documentElement.dataset.theme='dark'}catch(e){}")
+THEME_BOOT = (
+    "try{"
+    "var t=localStorage.getItem('biodelta-theme')||localStorage.getItem('garmin-report-theme');"
+    "if(t==='dark')document.documentElement.dataset.theme='dark';"
+    "var p=new URLSearchParams(window.location.search);"
+    "var l=p.get('lang')||localStorage.getItem('biodelta-lang');"
+    "if(l==='es'||l==='en')document.documentElement.lang=l;"
+    "}catch(e){}"
+)
 
 
 def logo_svg() -> str:
@@ -2119,15 +2217,138 @@ def _navbar(title: str, body: str, lang: str = "en") -> str:
     glossary_lbl = "Glosario" if is_es else "Glossary"
     print_lbl = "Imprimir" if is_es else "Print"
     theme_lbl = "☾"
+    flag_btn = "🇪🇸 ES" if is_es else "🇬🇧 EN"
+    lang_tip = "Cambiar a inglés" if is_es else "Switch to Spanish"
 
     return (
         '<nav class="topbar"><div class="topbar-in">'
         f'<span class="brand">{_esc(title)}</span>'
         f'<div class="navlinks">{links}</div>'
+        f'<button id="lang-btn" class="nav-btn lang-btn" type="button" title="{_esc(lang_tip)}" aria-label="{_esc(lang_tip)}">{flag_btn}</button>'
         f'<button id="glossary-btn" class="nav-btn" type="button" aria-label="{glossary_lbl}">{glossary_lbl}</button>'
         f'<button id="print-btn" class="nav-btn" type="button" onclick="window.print()" aria-label="{print_lbl}">{print_lbl}</button>'
         f'<button id="theme-btn" class="theme-btn" type="button" aria-label="Toggle theme" aria-pressed="false">{theme_lbl}</button>'
         '</div></nav>'
+    )
+
+
+def render_bilingual(md_en: str, md_es: str, sleep_rows, stress_map, bb_map, steps_map,
+                     start: date, end: date,
+                     tiles_en=(), tiles_es=(),
+                     rings_en=(), rings_es=(),
+                     baselines=None, intensity_map=None,
+                     vo2max=None, race_pred=None,
+                     traffic_light_en=None, traffic_light_es=None,
+                     default_lang: str = "en", goals: dict | None = None) -> str:
+    """Genera un informe HTML interactivo con soporte bilingüe (EN / ES) integrado.
+
+    Permite conmutar al instante entre inglés y español desde el navegador
+    sin necesidad de servidor backend (ideal para GitHub Pages y exportación estática).
+    """
+    charts_en = build_charts(sleep_rows, stress_map, bb_map, steps_map, start, end,
+                             baselines, intensity_map=intensity_map, vo2max=vo2max,
+                             race_pred=race_pred, lang="en", goals=goals)
+    charts_es = build_charts(sleep_rows, stress_map, bb_map, steps_map, start, end,
+                             baselines, intensity_map=intensity_map, vo2max=vo2max,
+                             race_pred=race_pred, lang="es", goals=goals)
+
+    resumen_parts_en = []
+    if traffic_light_en:
+        resumen_parts_en.append(status_card_html(traffic_light_en, lang="en"))
+    if rings_en:
+        resumen_parts_en.append(rings_html(rings_en))
+    if tiles_en:
+        resumen_parts_en.append(tiles_html(tiles_en))
+    if resumen_parts_en:
+        summary_en = "".join(resumen_parts_en)
+        charts_en["Summary"] = summary_en
+        charts_en["Resumen"] = summary_en
+
+    resumen_parts_es = []
+    if traffic_light_es:
+        resumen_parts_es.append(status_card_html(traffic_light_es, lang="es"))
+    if rings_es:
+        resumen_parts_es.append(rings_html(rings_es))
+    if tiles_es:
+        resumen_parts_es.append(tiles_html(tiles_es))
+    if resumen_parts_es:
+        summary_es = "".join(resumen_parts_es)
+        charts_es["Resumen"] = summary_es
+        charts_es["Summary"] = summary_es
+
+    title_en = f"Garmin log {start.isoformat()} – {end.isoformat()}"
+    title_es = f"Garmin log {start.isoformat()} – {end.isoformat()}"
+
+    body_en = md_to_html(md_en, charts_en, lang="en")
+    body_en = body_en.replace("<h1>", f"<h1>{logo_svg()}", 1)
+    head_en, _, rest_en = body_en.partition('<section class="sec"')
+    body_en = (f'<header class="lede">{head_en}</header><section class="sec"{rest_en}'
+               if rest_en else f'<header class="lede">{head_en}</header>')
+
+    body_es = md_to_html(md_es, charts_es, lang="es")
+    body_es = body_es.replace("<h1>", f"<h1>{logo_svg()}", 1)
+    head_es, _, rest_es = body_es.partition('<section class="sec"')
+    body_es = (f'<header class="lede">{head_es}</header><section class="sec"{rest_es}'
+               if rest_es else f'<header class="lede">{head_es}</header>')
+
+    _NAV_LABELS = {
+        "FC reposo + HRV nocturno": "FC reposo + HRV",
+        "Respiración y SpO2 nocturnos": "Respiración y SpO2",
+        "Resting HR + Overnight HRV": "Resting HR + HRV",
+        "Overnight Respiration & SpO2": "Respiration & SpO2",
+        "Session Breakdown": "Sessions",
+        "Detalle de sesiones": "Sesiones",
+    }
+    links_en = "".join(
+        f'<a href="#{sid}">{_NAV_LABELS.get(name, name)}</a>'
+        for sid, name in re.findall(
+            r'<section class="sec" id="([^"]+)">.*?<h2>(.*?)</h2>', body_en)
+    )
+    links_es = "".join(
+        f'<a href="#{sid}">{_NAV_LABELS.get(name, name)}</a>'
+        for sid, name in re.findall(
+            r'<section class="sec" id="([^"]+)">.*?<h2>(.*?)</h2>', body_es)
+    )
+
+    is_default_es = default_lang == "es"
+    flag_btn = "🇪🇸 ES" if is_default_es else "🇬🇧 EN"
+    lang_tip = "Cambiar a inglés" if is_default_es else "Switch to Spanish"
+
+    navbar_html = (
+        '<nav class="topbar"><div class="topbar-in">'
+        f'<span class="brand" data-lang="en"{" style=\"display:none\"" if is_default_es else ""}>{_esc(title_en)}</span>'
+        f'<span class="brand" data-lang="es"{" style=\"display:none\"" if not is_default_es else ""}>{_esc(title_es)}</span>'
+        f'<div class="navlinks" data-lang="en"{" style=\"display:none\"" if is_default_es else ""}>{links_en}</div>'
+        f'<div class="navlinks" data-lang="es"{" style=\"display:none\"" if not is_default_es else ""}>{links_es}</div>'
+        f'<button id="lang-btn" class="nav-btn lang-btn" type="button" title="{_esc(lang_tip)}" aria-label="{_esc(lang_tip)}">{flag_btn}</button>'
+        f'<button id="glossary-btn" class="nav-btn" type="button" aria-label="Glossary">'
+        f'<span data-lang="en"{" style=\"display:none\"" if is_default_es else ""}>Glossary</span>'
+        f'<span data-lang="es"{" style=\"display:none\"" if not is_default_es else ""}>Glosario</span>'
+        f'</button>'
+        f'<button id="print-btn" class="nav-btn" type="button" onclick="window.print()" aria-label="Print">'
+        f'<span data-lang="en"{" style=\"display:none\"" if is_default_es else ""}>Print</span>'
+        f'<span data-lang="es"{" style=\"display:none\"" if not is_default_es else ""}>Imprimir</span>'
+        f'</button>'
+        f'<button id="theme-btn" class="theme-btn" type="button" aria-label="Toggle theme" aria-pressed="false">☾</button>'
+        '</div></nav>'
+    )
+
+    return (
+        f'<!doctype html>\n<html lang="{default_lang}">\n<head>\n<meta charset="utf-8">\n'
+        '<meta name="viewport" content="width=device-width, initial-scale=1">\n'
+        f'<title>{_esc(title_en)}</title>\n'
+        + favicon_link()
+        + f'<style>{CSS}</style>\n'
+        f'<script>{THEME_BOOT}</script>\n</head>\n<body>\n'
+        + navbar_html
+        + '<main class="wrap">\n'
+        + f'<div id="report-lang-en" class="lang-view lang-en"{" style=\"display:none\"" if is_default_es else ""}>\n{body_en}\n</div>\n'
+        + f'<div id="report-lang-es" class="lang-view lang-es"{" style=\"display:none\"" if not is_default_es else ""}>\n{body_es}\n</div>\n'
+        + '</main>\n'
+        + glossary_modal_html(lang="en", modal_id="glossary-modal-en")
+        + glossary_modal_html(lang="es", modal_id="glossary-modal-es")
+        + tooltip_html()
+        + f'<script>{THEME_JS}</script>\n</body>\n</html>\n'
     )
 
 

@@ -2345,11 +2345,13 @@ def generate_md(
 def build_report(conn: sqlite3.Connection, start: date, end: date,
                  generated_on: date | None = None, notice: str = "",
                  lang: str = "en", goals: dict | None = None,
-                 standalone: bool = True) -> tuple[str, str]:
+                 standalone: bool = True, bilingual: bool = False) -> tuple[str, str]:
     """Genera el informe completo a partir de la BD: devuelve (markdown, html).
 
     `standalone=False` devuelve el HTML como fragmento incrustable (sin <head>
     ni barra propia), que es como lo pide el panel web.
+    `bilingual=True` genera un documento HTML interactivo con soporte bilingüe
+    (EN y ES) intercambiable en el navegador.
     """
     # Offset UTC→local para que las agregaciones por día (y las horas de sueño)
     # usen la fecha local, no la UTC en que Garmin guarda los timeseries.
@@ -2416,6 +2418,58 @@ def build_report(conn: sqlite3.Connection, start: date, end: date,
     baselines = ({"rhr": base_stats["rhr"], "hrv": base_stats["hrv"],
                   "swc_low": cur_stats.get("hrv_swc_low"), "swc_high": cur_stats.get("hrv_swc_high")}
                  if base_stats.get("n_nights", 0) >= 5 else None)
+
+    if bilingual and standalone:
+        other_lang = "es" if lang == "en" else "en"
+        flags_other = compute_flags(sleep_rows, cur_stats, base_stats, act_detail, lang=other_lang)
+        notice_other = (
+            "Informe de ejemplo con datos sintéticos: no corresponde a ninguna persona real."
+            if other_lang == "es"
+            else "Sample report with synthetic data: does not correspond to any real person."
+        ) if notice else ""
+
+        m_short_other = MONTHS_SHORT.get(other_lang, MONTHS_SHORT["en"])
+        weekly_other = None
+        if multi_week:
+            weeks_meta = iso_weeks_in_range(start, end)
+            weekly_other = [
+                {"wk_label": f"W{wknum}",
+                 "range_label": f"{ws.day} {m_short_other[ws.month]}–{we.day} {m_short_other[we.month]}",
+                 "stats": metric_stats(conn, ws, we, tz_min)}
+                for wknum, ws, we in weeks_meta
+            ]
+
+        md_other = generate_md(
+            sleep_rows, stress_map, bb_map, activity_map, steps_map, intensity_map,
+            floors_map, act_detail, laps_map, records,
+            vo2max, race_pred, start, end, cur_stats, base_stats, flags_other, BASELINE_WEEKS, weekly_other,
+            generated_on, notice_other, lang=other_lang,
+        )
+        traffic_light_other = compute_health_traffic_light(cur_stats, base_stats, flags_other, sleep_rows, lang=other_lang)
+
+        md_en = md if lang == "en" else md_other
+        md_es = md if lang == "es" else md_other
+        tl_en = traffic_light if lang == "en" else traffic_light_other
+        tl_es = traffic_light if lang == "es" else traffic_light_other
+
+        html = render_html.render_bilingual(
+            md_en, md_es, sleep_rows, stress_map, bb_map, steps_map,
+            start, end,
+            tiles_en=summary_tiles(cur_stats, base_stats, lang="en"),
+            tiles_es=summary_tiles(cur_stats, base_stats, lang="es"),
+            rings_en=summary_rings(cur_stats, base_stats, lang="en", goals=goals),
+            rings_es=summary_rings(cur_stats, base_stats, lang="es", goals=goals),
+            baselines=baselines,
+            intensity_map=intensity_map,
+            vo2max=vo2max,
+            race_pred=race_pred,
+            traffic_light_en=tl_en,
+            traffic_light_es=tl_es,
+            default_lang=lang,
+            goals=goals,
+        )
+        return md, html
+
     return md, render_html.render(md, sleep_rows, stress_map, bb_map, steps_map,
                                   start, end, tiles=summary_tiles(cur_stats, base_stats, lang=lang),
                                   rings=summary_rings(cur_stats, base_stats, lang=lang, goals=goals),
@@ -2491,7 +2545,7 @@ def main():
 
     notice = ("Informe de ejemplo con datos sintéticos: no corresponde a ninguna persona real." if is_es
               else "Sample report with synthetic data: does not correspond to any real person.") if args.demo else ""
-    md, html = build_report(conn, start, end, generated_on, notice, lang=lang)
+    md, html = build_report(conn, start, end, generated_on, notice, lang=lang, bilingual=args.demo)
     conn.close()
 
     OUTPUT_DIR.mkdir(exist_ok=True)

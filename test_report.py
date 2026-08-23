@@ -46,7 +46,7 @@ from render_html import (
     fitness_cards_html, build_charts, rings_html, tiles_html,
     _esc, _parse_ts, _median, _nice_bounds, _grid, _xlabels, _legend,
     _frame, _signal_class, _slug, _inline, _cell, _table,
-    logo_svg, favicon_link, _navbar, render,
+    logo_svg, favicon_link, _navbar, render, render_bilingual,
     status_card_html, glossary_modal_html, tooltip_html, METRIC_EXPLANATIONS,
 )
 
@@ -1475,6 +1475,12 @@ def test_navbar_and_render_full():
     body = '<section class="sec" id="sueno"><h2>Sueño</h2></section>'
     nav = _navbar("Garmin Log", body, lang="es")
     assert '<a href="#sueno">Sueño</a>' in nav
+    assert 'id="lang-btn"' in nav
+    assert "🇪🇸 ES" in nav
+
+    nav_en = _navbar("Garmin Log", body, lang="en")
+    assert 'id="lang-btn"' in nav_en
+    assert "🇬🇧 EN" in nav_en
 
     full_html = render(
         md="# Título\n\n## Sueño\n\nContenido",
@@ -1491,6 +1497,33 @@ def test_navbar_and_render_full():
     assert "<!doctype html>" in full_html
     assert "topbar" in full_html
     assert "Sueño" in full_html
+    assert 'id="lang-btn"' in full_html
+
+
+def test_render_bilingual_full():
+    html_bi = render_bilingual(
+        md_en="# Title\n\n## Summary\n\nSummary text\n\n## Sleep\n\nSleep text",
+        md_es="# Título\n\n## Resumen\n\nTexto resumen\n\n## Sueño\n\nTexto sueño",
+        sleep_rows=[],
+        stress_map={},
+        bb_map={},
+        steps_map={},
+        start=date(2026, 6, 1),
+        end=date(2026, 6, 7),
+        tiles_en=[("Resting HR", "48 bpm", "■ =", "")],
+        tiles_es=[("FC reposo", "48 bpm", "■ =", "")],
+        rings_en=[("Activity", 1.0, "300 min", "WHO", "good")],
+        rings_es=[("Actividad", 1.0, "300 min", "OMS", "good")],
+        default_lang="en",
+    )
+    assert "<!doctype html>" in html_bi
+    assert 'id="report-lang-en"' in html_bi
+    assert 'id="report-lang-es"' in html_bi
+    assert 'id="glossary-modal-en"' in html_bi
+    assert 'id="glossary-modal-es"' in html_bi
+    assert 'id="lang-btn"' in html_bi
+    assert "Summary" in html_bi and "Resumen" in html_bi
+    assert "Sleep" in html_bi and "Sueño" in html_bi
 
 
 def test_additional_coverage_cases():
