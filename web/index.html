@@ -1,0 +1,292 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>BioDelta · Health & Performance Log</title>
+  <link rel="icon" type="image/png" href="/assets/logo/favicon-64.png">
+  <link rel="stylesheet" href="/web/styles.css">
+  <script>
+    try {
+      var t = localStorage.getItem('biodelta-theme') || 'light';
+      if (t === 'dark') document.documentElement.dataset.theme = 'dark';
+      var l = localStorage.getItem('biodelta-lang') || 'en';
+      document.documentElement.lang = l;
+    } catch(e) {}
+  </script>
+</head>
+<body>
+
+  <!-- Barra superior unificada de BioDelta -->
+  <header class="app-header">
+    <div class="app-header-in">
+      <div class="app-brand" id="brand-home" data-i18n-title="brand_tooltip" title="BioDelta - Health & Longevity Dashboard">
+        <svg class="logo" viewBox="0 0 32 32" width="26" height="26" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M2 24H6L16 5L26 24H30" />
+          <path d="M11 24L14 17L17 27.5L19.5 21L22.5 24" />
+        </svg>
+        <span class="brand-name">BioDelta</span>
+      </div>
+
+      <!-- Controles de Time Travel / Navegación temporal -->
+      <div class="time-nav">
+        <button id="btn-prev-week" class="time-btn" data-i18n-title="prev_week_title" title="Previous week (◀)" aria-label="Previous week">◀</button>
+        <div class="range-selector-wrap">
+          <select id="range-select" data-i18n-label="select_placeholder" aria-label="Select week or date range">
+            <option value="loading" data-i18n="loading_dates">Loading dates...</option>
+          </select>
+        </div>
+        <button id="btn-next-week" class="time-btn" data-i18n-title="next_week_title" title="Next week (▶)" aria-label="Next week">▶</button>
+      </div>
+
+      <!-- Acciones y Herramientas -->
+      <div class="app-actions">
+        <button id="btn-lang" class="action-btn lang-btn" type="button" title="Switch to Spanish" aria-label="Switch to Spanish">
+          🇬🇧
+        </button>
+        <button id="btn-open-sync" class="action-btn primary" title="Sync with Garmin Connect">
+          <span data-i18n="lbl_sync">Sync</span>
+        </button>
+        <button id="btn-open-upload" class="action-btn" title="Load garmin_data.db file">
+          <span data-i18n="lbl_upload">Upload</span>
+        </button>
+        <button id="btn-open-demo" class="action-btn" title="Try with synthetic demo data">
+          <span data-i18n="lbl_demo">Demo</span>
+        </button>
+        <button id="btn-open-glossary" class="action-btn" title="Educational health metric glossary">
+          <span data-i18n="lbl_glossary">Glossary</span>
+        </button>
+        <button id="btn-open-settings" class="action-btn" data-i18n-title="lbl_settings" title="Settings">
+          <span data-i18n="lbl_settings">Settings</span>
+        </button>
+        <button id="btn-print" class="action-btn" title="Export to PDF or Print">
+          <span data-i18n="lbl_print">Print</span>
+        </button>
+        <button id="theme-btn" class="theme-toggle" type="button" aria-label="Toggle dark/light theme">
+          ☾
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <!-- Contenedor Principal del Dashboard -->
+  <main class="app-main" id="main-content">
+    
+    <!-- Estado de Carga -->
+    <div id="loading-view" class="center-state" style="display: none;">
+      <div class="spinner"></div>
+      <p id="loading-msg" data-i18n="loading_report">Generating health report...</p>
+    </div>
+
+    <!-- Estado de Bienvenida / Onboarding Zero-Tech -->
+    <div id="onboarding-view" class="center-state" style="display: none;">
+      <div class="onboarding-card">
+        <div class="onboarding-badge" data-i18n="onboarding_badge">Welcome to BioDelta!</div>
+        <h2 data-i18n="onboarding_title">Your Garmin health metrics, clear and private</h2>
+        <p class="onboarding-subtitle" data-i18n="onboarding_subtitle">100% local on your device, no external servers. Choose how to start:</p>
+        
+        <div class="onboarding-grid">
+          <div class="onboarding-option" id="card-connect-garmin">
+            <h3 data-i18n="card_garmin_title">Connect with Garmin</h3>
+            <p data-i18n="card_garmin_desc">Sign in with your Garmin Connect account to sync automatically with 2FA support.</p>
+            <button class="btn primary" data-i18n="card_garmin_btn">Connect Garmin</button>
+          </div>
+
+          <div class="onboarding-option" id="card-upload-file">
+            <h3 data-i18n="card_upload_title">Load Database</h3>
+            <p data-i18n="card_upload_desc">Drag and drop your existing <code>garmin_data.db</code> file to visualize it instantly.</p>
+            <button class="btn secondary" data-i18n="card_upload_btn">Upload File</button>
+          </div>
+
+          <div class="onboarding-option" id="card-demo-mode">
+            <h3 data-i18n="card_demo_title">Demo Mode</h3>
+            <p data-i18n="card_demo_desc">Explore a full report with synthetic demo data without needing a watch.</p>
+            <button class="btn secondary" data-i18n="card_demo_btn">View Demo</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Visor del Dashboard de Informe -->
+    <div id="report-view">
+      <div id="report-container" class="report-content"></div>
+    </div>
+
+  </main>
+
+  <!-- Modal 1: Sincronización y Autenticación Garmin -->
+  <div id="modal-sync" class="modal-overlay" aria-hidden="true">
+    <div class="modal-box">
+      <div class="modal-head">
+        <h3 data-i18n="sync_modal_title">Sync with Garmin Connect</h3>
+        <button class="btn-close" data-close="modal-sync">✕</button>
+      </div>
+      
+      <div class="modal-tabs">
+        <button class="tab-btn active" data-tab="sync-tab-auto" data-i18n="sync_tab_sync">Synchronization</button>
+        <button class="tab-btn" data-tab="sync-tab-login" data-i18n="sync_tab_login">Account / Login</button>
+      </div>
+
+      <div class="modal-body">
+        <!-- Pestaña Sincronizar -->
+        <div id="sync-tab-auto" class="tab-content active">
+          <div id="sync-auth-status" class="status-banner">
+            <span class="status-indicator">●</span>
+            <span id="sync-auth-text" data-i18n="sync_checking_session">Checking Garmin session...</span>
+          </div>
+
+          <div class="form-group">
+            <label for="sync-start-date" data-i18n="sync_range_label">Date range to extract (optional):</label>
+            <div class="date-row">
+              <input type="date" id="sync-start-date" placeholder="From">
+              <span data-i18n="sync_to">to</span>
+              <input type="date" id="sync-end-date" placeholder="To">
+            </div>
+            <small class="form-help" data-i18n="sync_help">If left blank, Garmin will incrementally fetch the most recent data.</small>
+          </div>
+
+          <button id="btn-start-sync" class="btn primary full-width" data-i18n="btn_start_sync">
+            Start Synchronization
+          </button>
+
+          <div id="sync-progress" class="sync-progress-box" style="display: none;">
+            <div class="progress-bar-wrap">
+              <div class="progress-bar-indeterminate"></div>
+            </div>
+            <p id="sync-progress-msg" data-i18n="sync_connecting">Connecting with Garmin Connect...</p>
+          </div>
+        </div>
+
+        <!-- Pestaña Login / Credenciales -->
+        <div id="sync-tab-login" class="tab-content">
+          <form id="form-garmin-login">
+            <div class="form-group">
+              <label for="login-email" data-i18n="login_email_label">Garmin Connect Email:</label>
+              <input type="email" id="login-email" required placeholder="you@email.com" autocomplete="username">
+            </div>
+
+            <div class="form-group">
+              <label for="login-password" data-i18n="login_pass_label">Password:</label>
+              <input type="password" id="login-password" required placeholder="••••••••" autocomplete="current-password">
+            </div>
+
+            <p class="privacy-note" data-i18n="privacy_note">
+              Your credentials are used exclusively to obtain the Garmin session locally and are never sent to third parties.
+            </p>
+
+            <button type="submit" id="btn-submit-login" class="btn primary full-width" data-i18n="btn_submit_login">
+              Connect and Authenticate
+            </button>
+          </form>
+        </div>
+
+        <!-- Sub-formulario 2FA (aparece cuando Garmin requiere verificación) -->
+        <div id="sync-mfa-box" class="mfa-box" style="display: none;">
+          <div class="mfa-header">
+            <h4 data-i18n="mfa_title">Two-Step Verification (2FA)</h4>
+          </div>
+          <p id="mfa-instructions" data-i18n="mfa_instructions">Enter the security code Garmin sent to your phone or email:</p>
+          <div class="mfa-input-row">
+            <input type="text" id="mfa-code" placeholder="123456" maxlength="8" autocomplete="one-time-code">
+            <button id="btn-submit-mfa" class="btn primary" data-i18n="btn_submit_mfa">Verify</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal 2: Cargar Archivo SQLite (Drag & Drop) -->
+  <div id="modal-upload" class="modal-overlay" aria-hidden="true">
+    <div class="modal-box">
+      <div class="modal-head">
+        <h3 data-i18n="upload_modal_title">Load Database</h3>
+        <button class="btn-close" data-close="modal-upload">✕</button>
+      </div>
+      <div class="modal-body">
+        <div id="drop-zone" class="drop-zone">
+          <h4 data-i18n="upload_drop_title">Drag your <code>garmin_data.db</code> file here</h4>
+          <p data-i18n="upload_drop_subtitle">or click to browse your computer</p>
+          <input type="file" id="file-input" accept=".db,.sqlite,.sqlite3" style="display: none;">
+          <button type="button" id="btn-browse-file" class="btn secondary" data-i18n="upload_browse_btn">Select file</button>
+        </div>
+        <div id="upload-status" class="upload-status-box" style="display: none;"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal 3: Glosario de Salud Interactivo -->
+  <div id="modal-glossary" class="modal-overlay" aria-hidden="true">
+    <div class="modal-box wide">
+      <div class="modal-head">
+        <h3 data-i18n="glossary_modal_title">Health & Metric Glossary</h3>
+        <button class="btn-close" data-close="modal-glossary">✕</button>
+      </div>
+      <div class="modal-filter-bar">
+        <input type="search" id="modal-glossary-search" placeholder="Search metric or concept (e.g. SRI, HRV, ACWR)...">
+        <div class="glossary-categories" id="glossary-cats">
+          <button type="button" class="cat-pill active" data-cat="all" data-i18n="cat_all">All</button>
+          <button type="button" class="cat-pill" data-cat="Sleep" data-i18n="cat_sleep">Sleep</button>
+          <button type="button" class="cat-pill" data-cat="Cardiovascular" data-i18n="cat_cardio">Cardiovascular</button>
+          <button type="button" class="cat-pill" data-cat="Load & Performance" data-i18n="cat_load">Load</button>
+          <button type="button" class="cat-pill" data-cat="Wellness" data-i18n="cat_wellness">Wellness</button>
+        </div>
+      </div>
+      <div class="modal-body scrollable">
+        <div id="glossary-cards-container" class="glossary-grid"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal 4: Ajustes y Objetivos Personalizados -->
+  <div id="modal-settings" class="modal-overlay" aria-hidden="true">
+    <div class="modal-box">
+      <div class="modal-head">
+        <h3 data-i18n="settings_modal_title">Target Settings</h3>
+        <button class="btn-close" data-close="modal-settings">✕</button>
+      </div>
+      <div class="modal-body">
+        <form id="form-settings">
+          <div class="form-group">
+            <label for="set-sleep" data-i18n="settings_sleep_label">Sleep goal per night:</label>
+            <select id="set-sleep">
+              <option value="7.0">7 hours</option>
+              <option value="7.5">7 hours 30 min</option>
+              <option value="8.0" selected>8 hours (Recommended)</option>
+              <option value="8.5">8 hours 30 min</option>
+              <option value="9.0">9 hours</option>
+            </select>
+          </div>
+
+          <div class="form-group">
+            <label for="set-steps" data-i18n="settings_steps_label">Daily steps goal:</label>
+            <select id="set-steps">
+              <option value="6000">6,000 steps</option>
+              <option value="8000">8,000 steps</option>
+              <option value="10000" selected>10,000 steps (Recommended)</option>
+              <option value="12000">12,000 steps</option>
+              <option value="15000">15,000 steps</option>
+            </select>
+          </div>
+
+          <div class="form-group">
+            <label for="set-intensity" data-i18n="settings_intensity_label">Weekly intensity minutes goal (WHO):</label>
+            <select id="set-intensity">
+              <option value="150">150 min / week (WHO minimum)</option>
+              <option value="225">225 min / week</option>
+              <option value="300" selected>300 min / week (Recommended)</option>
+              <option value="450">450 min / week (High performance)</option>
+            </select>
+          </div>
+
+          <button type="submit" class="btn primary full-width" data-i18n="settings_save_btn">Save Preferences</button>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <!-- Contenedor de Notificaciones Toast -->
+  <div id="toast-container" class="toast-container"></div>
+
+  <script src="/web/app.js"></script>
+</body>
+</html>

@@ -19,5 +19,6 @@ __pycache__/
 .idea/
 .vscode/
 
-# Base de datos del modo demo
+# Base de datos del modo demo y preferencias locales
 demo.db
+settings.json

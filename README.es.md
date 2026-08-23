@@ -7,40 +7,64 @@
 
 _[English](README.md) · **Español**_
 
-Convierte tus datos de [Garmin Connect](https://connect.garmin.com) en un informe semanal
-que te dice **qué merece atención**, no solo qué pasó.
+Convierte tus datos de [Garmin Connect](https://connect.garmin.com) en un informe semanal y un
+panel interactivo que te dicen **qué merece atención**, no solo qué pasó.
 
 Cada métrica se compara con **tu propia media de las ~4 semanas previas** — no con la media
-de la población — y de ahí salen **señales** automáticas: FC en reposo elevada varios días
-seguidos, HRV por debajo de lo habitual, noches cortas, horarios irregulares, estrés alto.
+de la población — y de ahí salen **señales y diagnósticos automáticos**: semáforo de estado,
+FC en reposo elevada varios días seguidos, HRV fuera de tu rango normal, noches cortas,
+horarios irregulares y estrés alto.
 
-Todo corre en local: tus credenciales y tus datos de salud nunca salen de tu máquina.
+Todo corre 100% en local: tus credenciales y tus datos de salud nunca salen de tu ordenador.
+El informe se genera en español o en inglés (`--lang es|en`, o la bandera del panel).
 
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="docs/screenshot-dark.png">
-  <img src="docs/screenshot.png" alt="Cabecera del informe: anillos de resumen, cifras y señales automáticas">
+  <source media="(prefers-color-scheme: dark)" srcset="docs/screenshot-dark-es.png">
+  <img src="docs/screenshot-es.png" alt="Cabecera del informe: semáforo de estado, anillos de resumen, cifras y señales automáticas">
 </picture>
 
-**[▶ Ver un informe de ejemplo completo](https://jaimegk.github.io/biodelta/)** ·
+**[▶ Ver un informe de ejemplo interactivo](https://jaimegk.github.io/biodelta/)** ·
 [versión Markdown](docs/ejemplo_garmin_log.md)
 
-## Pruébalo en 30 segundos (sin cuenta de Garmin)
+## Inicio Rápido en 1-Clic
+
+Puedes usar BioDelta sin escribir código ni configurar entornos manualmente:
+
+- **Linux / macOS:** Haz doble clic en `iniciar.command` o ejecuta en tu terminal:
+  ```bash
+  ./iniciar.sh
+  ```
+- **Windows:** Haz doble clic en `iniciar.bat`.
+
+El lanzador prepara el entorno virtual la primera vez y abre BioDelta en tu navegador en
+`http://localhost:8000`.
+
+### Probar en 30 segundos (sin cuenta de Garmin)
 
 ```bash
 git clone https://github.com/jaimegk/biodelta.git
 cd biodelta
-python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
-
-.venv/bin/python generate_report.py --demo
+./iniciar.sh
 ```
 
-`--demo` construye una base de datos sintética de seis semanas y genera el informe completo
-en `output/`. No necesita cuenta, ni credenciales, ni conexión.
+Al abrir la aplicación, pulsa **Demo** para explorar un informe completo de seis semanas con
+datos sintéticos y todas las señales activas. Sin cuenta, sin credenciales y sin conexión.
 
 ## Qué lo hace distinto
 
-**Señales, no solo números.** El informe abre diciéndote qué mirar. Doce reglas comparan la
-semana con tu línea base y avisan de lo que se sale.
+**Semáforo de estado y diagnóstico en lenguaje llano.** El informe abre con una evaluación
+(🟢 Óptimo / 🟡 Atención requerida / 🔴 Descanso necesario) y tres frases: duración y
+regularidad del sueño, recuperación autonómica y estrés, y qué hacer hoy.
+
+**Panel web local y viaje en el tiempo.** Navega entre semanas (`◀` / `▶`), arrastra un
+`garmin_data.db` o sincroniza con tu cuenta de Garmin, con **verificación en dos pasos
+(2FA/MFA)**. El servidor escucha en `127.0.0.1` y solo atiende peticiones nacidas en él.
+
+**Glosario integrado.** Un botón `Glosario` con una explicación clara y basada en
+evidencia de cada métrica (SRI, ACWR, RMSSD, desacoplamiento aeróbico, VO2máx…).
+
+**Gráficas sincronizadas.** Pasa el ratón sobre cualquier día para ver sus valores exactos y
+resaltar ese mismo día en todas las gráficas de la semana a la vez.
 
 **Tu línea base, no la de la población.** «49 bpm» no significa nada por sí solo; «49 bpm
 cuando lo tuyo son 46, tres días seguidos» sí.
@@ -49,8 +73,8 @@ cuando lo tuyo son 46, tres días seguidos» sí.
 informe lo enseña en paralelo en vez de dejarte cruzar tablas.
 
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="docs/screenshot-charts-dark.png">
-  <img src="docs/screenshot-charts.png" alt="FC en reposo y HRV nocturno: el pico de fatiga y su espejo">
+  <source media="(prefers-color-scheme: dark)" srcset="docs/screenshot-charts-dark-es.png">
+  <img src="docs/screenshot-charts-es.png" alt="FC en reposo y HRV nocturno: el pico de fatiga y su espejo">
 </picture>
 
 **Las métricas que de verdad importan.** El VO2máx es el predictor de mortalidad por
@@ -104,8 +128,18 @@ python generate_report.py --start-date 2026-05-01 --end-date 2026-05-31
 # Informe de ejemplo con datos sintéticos
 python generate_report.py --demo
 
+# Informe en español (por defecto sale en inglés)
+python generate_report.py --lang es
+
 # Inspeccionar el esquema de la BD (tablas y columnas)
 python generate_report.py --inspect-schema
+```
+
+O levanta el panel local, que hace todo lo anterior desde el navegador:
+
+```bash
+python app.py                 # http://localhost:8000, abre el navegador
+python app.py --port 9000 --no-browser
 ```
 
 ### Versión HTML
@@ -114,7 +148,8 @@ Cada ejecución escribe además un `.html` con el mismo nombre: las tablas ya fo
 cabecera de tarjetas y **gráficas de fases del sueño, FC en reposo, HRV, estrés sobre Body
 Battery y pasos diarios**.
 
-Se abre con doble clic: es un fichero autocontenido, sin JavaScript ni recursos externos, así
+Se abre con doble clic: es un fichero autocontenido, sin recursos externos (el único
+JavaScript es el del tema, el glosario y los tooltips de las gráficas), así
 que funciona offline y también sirve para mandártelo al móvil. Se adapta al tema claro/oscuro
 del sistema, y al pasar el ratón sobre una barra o un punto se ve su valor exacto.
 
@@ -135,7 +170,7 @@ del sistema, y al pasar el ratón sobre una barra o un punto se ve su valor exac
 Las noches de sueño se etiquetan por el día en que te acostaste (no por el de despertar), y
 las lecturas inválidas de estrés/Body Battery (`value < 0`) se descartan.
 
-> **Nota sobre el VO2máx:** el Forerunner 165 solo lo estima a partir de **carreras o
+> **Nota sobre el VO2máx:** los relojes Garmin solo lo estiman a partir de **carreras o
 > caminatas al aire libre con GPS** (o ciclismo con potenciómetro). Las sesiones indoor, en
 > cinta o de natación no generan estimación; si no aparece, haz alguna salida al aire libre.
 

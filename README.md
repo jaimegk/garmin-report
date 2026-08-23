@@ -10,42 +10,66 @@ _**English** · [Español](README.es.md)_
 [![Tests](https://github.com/jaimegk/biodelta/actions/workflows/tests.yml/badge.svg)](https://github.com/jaimegk/biodelta/actions/workflows/tests.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
-Turn your [Garmin Connect](https://connect.garmin.com) data into a weekly health report that
-tells you **what deserves attention** — not just what happened.
+Turn your [Garmin Connect](https://connect.garmin.com) data into a weekly health report and
+an interactive dashboard that tell you **what deserves attention** — not just what happened.
 
 Every metric is compared against **your own average over the previous ~4 weeks** (not against
-population norms), and that comparison drives automatic **signals**: resting heart rate up for
-several days in a row, HRV below your usual, short nights, irregular bedtimes, high stress.
+population norms), and that comparison drives automatic **signals and diagnostics**: a health
+traffic light, resting heart rate up for several days in a row, HRV out of your normal band,
+short nights, irregular bedtimes and high stress.
 
-Everything runs locally. Your credentials and your health data never leave your machine.
+Everything runs 100% locally. Your credentials and your health data never leave your machine.
 
-> The report itself is written in Spanish. The code, the docs and this README are in English.
+> The report is available in English and Spanish (`--lang en|es`, or the flag switcher in the
+> dashboard). The code comments are in Spanish; the docs and this README are in English.
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/screenshot-dark.png">
-  <img src="docs/screenshot.png" alt="Report header: summary rings, metric sheet and automatic signals">
+  <img src="docs/screenshot.png" alt="Report header: health traffic light, summary rings, metric sheet and automatic signals">
 </picture>
 
-**[▶ See a full example report](https://jaimegk.github.io/biodelta/)** ·
+**[▶ See a full interactive example report](https://jaimegk.github.io/biodelta/)** ·
 [Markdown version](docs/ejemplo_garmin_log.md)
 
-## Try it in 30 seconds (no Garmin account needed)
+## 1-Click Quickstart
+
+You can use BioDelta without touching the terminal or configuring environments:
+
+- **Linux / macOS:** Double-click `iniciar.command` or run:
+  ```bash
+  ./iniciar.sh
+  ```
+- **Windows:** Double-click `iniciar.bat`.
+
+The launcher sets up the virtual environment on first run and opens BioDelta in your browser
+at `http://localhost:8000`.
+
+### Try it in 30 seconds (no Garmin account needed)
 
 ```bash
 git clone https://github.com/jaimegk/biodelta.git
 cd biodelta
-python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
-
-.venv/bin/python generate_report.py --demo
+./iniciar.sh
 ```
 
-`--demo` builds a synthetic six-week database and generates the full report into `output/`.
-No account, no credentials, no network.
+When the app opens, click **Demo** to explore a full six-week report built from synthetic
+data, with every signal active. No account, no credentials, no network.
 
 ## What makes it different
 
-**Signals, not just numbers.** The report opens by telling you what to look at. Twelve rules
-compare the week against your baseline and flag whatever stands out.
+**Health traffic light and plain-language diagnosis.** The report opens with an executive
+summary (🟢 Optimal / 🟡 Attention needed / 🔴 Recovery needed) and three sentences in plain
+language: sleep duration and regularity, autonomic recovery and stress, and what to do today.
+
+**Local web dashboard and time travel.** Jump between weeks (`◀` / `▶`), drag and drop a
+`garmin_data.db` file, or sync straight from Garmin Connect with **two-factor authentication
+(2FA/MFA)** support. The server binds to `127.0.0.1` and only accepts requests from itself.
+
+**Interactive metric glossary.** A `Glossary` button with a clear, evidence-based
+definition of every metric (SRI, ACWR, RMSSD, aerobic decoupling, VO2max…).
+
+**Synchronized charts.** Hover over any day to read its exact values and highlight that same
+day across every chart of the week at once.
 
 **Your baseline, not the population's.** "49 bpm" means nothing on its own; "49 bpm when
 yours is 46, three days running" does.
@@ -109,8 +133,18 @@ python generate_report.py --start-date 2026-05-01 --end-date 2026-05-31
 # Example report built from synthetic data
 python generate_report.py --demo
 
+# Report in Spanish (English is the default)
+python generate_report.py --lang es
+
 # Inspect the database schema (tables and columns)
 python generate_report.py --inspect-schema
+```
+
+Or run the local dashboard, which does all of the above from the browser:
+
+```bash
+python app.py                 # http://localhost:8000, opens the browser
+python app.py --port 9000 --no-browser
 ```
 
 ### The HTML version
@@ -118,8 +152,9 @@ python generate_report.py --inspect-schema
 Every run also writes an `.html` next to the `.md`: formatted tables, the card header, and
 **charts for sleep stages, resting heart rate, HRV, stress over Body Battery, and daily steps**.
 
-It opens with a double click — a single self-contained file with no JavaScript and no external
-resources, so it works offline and travels well to a phone. It follows the system light/dark
+It opens with a double click — a single self-contained file with no external resources (the
+only JavaScript is the theme switch, the glossary and the chart tooltips), so it works offline
+and travels well to a phone. It follows the system light/dark
 theme, and hovering a bar or a point shows its exact value.
 
 ## What's in the report
@@ -139,7 +174,7 @@ theme, and hovering a bar or a point shows its exact value.
 Sleep is attributed to the day you went to bed (not the day you woke up), and invalid
 stress/Body Battery readings (`value < 0`) are discarded.
 
-> **On VO2max:** the Forerunner 165 only estimates it from **outdoor runs or walks with GPS**
+> **On VO2max:** Garmin watches only estimate it from **outdoor runs or walks with GPS**
 > (or cycling with a power meter). Indoor, treadmill and swimming sessions produce no estimate.
 
 ## Tests

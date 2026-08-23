@@ -34,7 +34,8 @@ clean checkout reproduces those files byte for byte. If a diff shows up that you
 not expect, something changed in the report. That is the point.
 
 `docs/screenshot.png` (light), `docs/screenshot-dark.png` (dark) and
-`docs/screenshot-charts.png` (light), `docs/screenshot-charts-dark.png` (dark) are manual
+`docs/screenshot-charts.png` (light), `docs/screenshot-charts-dark.png` (dark), along with
+their Spanish counterparts (`docs/*-es.png`), are manual
 captures of that same HTML. Retake them when the layout changes visibly, not on every data tweak — and
 retake the pairs together, or the README's light/dark `<picture>` shows two
 different reports.
