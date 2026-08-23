@@ -19,8 +19,8 @@ Todo corre 100% en local: tus credenciales y tus datos de salud nunca salen de t
 El informe se genera en español o en inglés (`--lang es|en`, o la bandera del panel).
 
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="docs/screenshot-dark.png">
-  <img src="docs/screenshot.png" alt="Cabecera del informe: semáforo de estado, anillos de resumen, cifras y señales automáticas">
+  <source media="(prefers-color-scheme: dark)" srcset="docs/screenshot-dark-es.png">
+  <img src="docs/screenshot-es.png" alt="Cabecera del informe: semáforo de estado, anillos de resumen, cifras y señales automáticas">
 </picture>
 
 **[▶ Ver un informe de ejemplo interactivo](https://jaimegk.github.io/biodelta/)** ·
@@ -73,8 +73,8 @@ cuando lo tuyo son 46, tres días seguidos» sí.
 informe lo enseña en paralelo en vez de dejarte cruzar tablas.
 
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="docs/screenshot-charts-dark.png">
-  <img src="docs/screenshot-charts.png" alt="FC en reposo y HRV nocturno: el pico de fatiga y su espejo">
+  <source media="(prefers-color-scheme: dark)" srcset="docs/screenshot-charts-dark-es.png">
+  <img src="docs/screenshot-charts-es.png" alt="FC en reposo y HRV nocturno: el pico de fatiga y su espejo">
 </picture>
 
 **Las métricas que de verdad importan.** El VO2máx es el predictor de mortalidad por

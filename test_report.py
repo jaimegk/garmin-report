@@ -1859,6 +1859,38 @@ def test_app_server_api_and_endpoints():
                 assert res_sync["status"] == "started"
 
 
+def test_readme_image_references():
+    import re
+    from pathlib import Path
+
+    repo_dir = Path(__file__).parent
+    for fname, lang in [("README.md", "en"), ("README.es.md", "es")]:
+        readme_path = repo_dir / fname
+        assert readme_path.exists(), f"{fname} no existe"
+        text = readme_path.read_text(encoding="utf-8")
+
+        # Extraer rutas de imágenes en src="..." y srcset="..."
+        image_srcs = re.findall(r'(?:src|srcset)="([^"]+)"', text)
+        assert len(image_srcs) >= 3, f"Faltan imágenes en {fname}"
+
+        for src in image_srcs:
+            img_file = repo_dir / src
+            assert img_file.exists(), f"Imagen {src} referenciada en {fname} no existe en disco"
+            assert img_file.stat().st_size > 0, f"Imagen {src} está vacía"
+
+        if lang == "es":
+            assert "docs/screenshot-es.png" in text
+            assert "docs/screenshot-dark-es.png" in text
+            assert "docs/screenshot-charts-es.png" in text
+            assert "docs/screenshot-charts-dark-es.png" in text
+        else:
+            assert "docs/screenshot.png" in text
+            assert "docs/screenshot-dark.png" in text
+            assert "docs/screenshot-charts.png" in text
+            assert "docs/screenshot-charts-dark.png" in text
+
+
+
 # ===========================================================================
 # Ejecución directa
 # ===========================================================================
